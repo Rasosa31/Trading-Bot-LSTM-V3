@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: stock-prediction-capstone
+    env: python
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements-render.txt
+    startCommand: uvicorn app.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: MODEL_PATH
+        value: models/lstm_model.h5
+      - key: SCALER_PATH
+        value: models/scaler.pkl
+      - key: MODEL_S3_URL
+        value: ""
+      - key: SCALER_S3_URL
+        value: ""
+      - key: DATA_PROVIDER
+        value: "yahoo" # 'yahoo' recommended to avoid Alpha Vantage premium endpoints
+      - key: ALPHA_VANTAGE_KEY
+        value: "" # Add your Alpha Vantage API key in the Render dashboard (do not commit secrets)
+    autoDeploy: true

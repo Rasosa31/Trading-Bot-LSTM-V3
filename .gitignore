@@ -1,0 +1,24 @@
+# Python - Caché y Compilados
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+
+# Entornos Virtuales
+venv/
+.venv/
+env/
+
+# Datos y Modelos (Para evitar que pesen en la nube)
+data/
+*.csv
+*.h5
+*.keras
+*.pickle
+
+# Sistema y Configuración
+.env
+.DS_Store
+.vscode/
+.idea/

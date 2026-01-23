@@ -1,0 +1,13 @@
+numpy==1.26.4
+pandas==2.2.2
+yfinance==0.2.44
+scikit-learn==1.5.1
+matplotlib==3.9.2
+seaborn==0.13.2
+tensorflow-cpu==2.17.0
+fastapi==0.115.0
+uvicorn==0.31.0
+joblib==1.4.2
+requests==2.32.3
+pydantic==2.9.2
+yahooquery
