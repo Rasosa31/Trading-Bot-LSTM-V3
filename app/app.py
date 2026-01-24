@@ -55,13 +55,15 @@ def load_v4_ensemble():
 model_committee = load_v4_ensemble()
 
 # 4. INTERFAZ Y SIDEBAR
-st.title("🤖 StockAI V3: Multi-Indicator Intelligence")
+# 4. INTERFAZ Y SIDEBAR
+st.title("🤖 StockAI V4: Multi-Model Committee")
 
 with st.sidebar:
-    if model_v3:
-        st.success("✅ Modelo V3 Elite Cargado")
+    # Cambiamos la verificación: ahora comprobamos si la lista de modelos tiene algo
+    if 'model_committee' in globals() and len(model_committee) > 0:
+        st.success(f"✅ Comité V4 Activo ({len(model_committee)} Motores)")
     else:
-        st.warning("⚠️ Modo Entrenamiento (No se detectó .keras)")
+        st.warning("⚠️ Modo Entrenamiento (Esperando archivos .keras)")
     
     ticker = st.text_input("Símbolo (Ticker):", value="AAPL").upper()
     timeframe = st.selectbox("Temporalidad:", ["Daily", "Weekly", "Monthly"])
@@ -69,7 +71,7 @@ with st.sidebar:
 
     st.divider()
     show_backtest = st.checkbox("Habilitar Backtesting")
-    st.info("Mejoras V3: Ensemble, Pesos persistentes y 8 Indicadores.")
+    st.info("V4: Bagging de 5 modelos independientes + Robust Scaling.")
 
 # 5. OBTENCIÓN DE DATOS
 @st.cache_data(ttl=3600)
