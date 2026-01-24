@@ -2,10 +2,16 @@ import streamlit as st
 import tensorflow as tf
 import os
 
-# 1. CONFIGURACIÓN DE ESTABILIDAD PARA MAC
-tf.config.threading.set_intra_op_parallelism_threads(1)
-tf.config.threading.set_inter_op_parallelism_threads(1)
-tf.config.set_visible_devices([], 'GPU')
+# 1. CONFIGURACIÓN DE ESTABILIDAD (Protección contra re-inicialización)
+try:
+    if not tf.config.list_physical_devices('GPU'):
+        # Solo intentamos configurar si no se ha inicializado el contexto
+        tf.config.threading.set_intra_op_parallelism_threads(1)
+        tf.config.threading.set_inter_op_parallelism_threads(1)
+        tf.config.set_visible_devices([], 'GPU')
+except RuntimeError:
+    # Si TensorFlow ya se inició, ignoramos la configuración silenciosamente
+    pass
 
 import pandas as pd
 import numpy as np
@@ -32,17 +38,21 @@ MODEL_PATH = os.path.join(BASE_DIR, 'models', 'lstm_model.keras')
 SCALER_PATH = os.path.join(BASE_DIR, 'models', 'scaler.pkl')
 
 @st.cache_resource
-def load_v3_assets():
+def load_v4_ensemble():
+    ensemble_models = []
+    names = ["m1_puro", "m2_volatilidad", "m3_tendencia", "m4_memoria", "m5_agresivo"]
+    
     try:
-        if os.path.exists(MODEL_PATH):
-            model = load_model(MODEL_PATH, compile=False)
-            scaler = joblib.load(SCALER_PATH) if os.path.exists(SCALER_PATH) else None
-            return model, scaler
+        for name in names:
+            path = os.path.join(BASE_DIR, 'models', f'{name}.keras')
+            if os.path.exists(path):
+                ensemble_models.append(load_model(path, compile=False))
+        return ensemble_models
     except Exception as e:
-        st.error(f"Error cargando archivos: {e}")
-    return None, None
+        st.error(f"Error cargando el comité de expertos: {e}")
+    return []
 
-model_v3, scaler_v3 = load_v3_assets()
+model_committee = load_v4_ensemble()
 
 # 4. INTERFAZ Y SIDEBAR
 st.title("🤖 StockAI V3: Multi-Indicator Intelligence")
