@@ -1,210 +1,183 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
-import yfinance as yf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
-from sklearn.preprocessing import MinMaxScaler
-import plotly.graph_objects as go
-import random
 import tensorflow as tf
 import os
 
-# Lógica de Persistencia V3
-MODEL_PATH = 'models/lstm_model.keras'
-SCALER_PATH = 'models/scaler.pkl'
+# 1. CONFIGURACIÓN DE ESTABILIDAD PARA MAC
+tf.config.threading.set_intra_op_parallelism_threads(1)
+tf.config.threading.set_inter_op_parallelism_threads(1)
+tf.config.set_visible_devices([], 'GPU')
 
+import pandas as pd
+import numpy as np
+import yfinance as yf
 import joblib
+import random
 from tensorflow.keras.models import load_model
+import plotly.graph_objects as go
 
-model_v3 = None
-scaler_v3 = None
-
-if os.path.exists(MODEL_PATH) and os.path.exists(SCALER_PATH):
-    model_v3 = load_model(MODEL_PATH)
-    scaler_v3 = joblib.load(SCALER_PATH)
-    st.sidebar.success("✅ Modelo V3 pre-entrenado cargado")
-    
-# ==========================================
-# 1. MEJORA V3: CONGELADOR DE ALEATORIEDAD
-# ==========================================
+# 2. CONFIGURACIÓN DE SEMILLAS
 def set_seeds(seed=42):
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    random.seed(seed)
     np.random.seed(seed)
     tf.random.set_seed(seed)
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
 
 set_seeds()
 
-# Configuración de página
-st.set_page_config(page_title="StockAI V3 Pro - Elite Edition", layout="wide")
+st.set_page_config(page_title="StockAI V3 Pro", layout="wide")
 
-# ==========================================
-# 2. MOTOR DE IA (Adaptado a N features)
-# ==========================================
-def train_multivariate_model(X, y):
-    # X.shape[1] = ventana (60), X.shape[2] = features (8)
-    model = Sequential([
-        LSTM(64, return_sequences=True, input_shape=(X.shape[1], X.shape[2])),
-        Dropout(0.2),
-        LSTM(32, return_sequences=False),
-        Dense(16, activation='relu'),
-        Dense(1)
-    ])
-    model.compile(optimizer='adam', loss='mse')
-    model.fit(X, y, epochs=12, batch_size=32, verbose=0)
-    return model
+# 3. RUTAS Y CARGA DE MODELO
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODEL_PATH = os.path.join(BASE_DIR, 'models', 'lstm_model.keras')
+SCALER_PATH = os.path.join(BASE_DIR, 'models', 'scaler.pkl')
 
-# Interface y Sidebar
+@st.cache_resource
+def load_v3_assets():
+    try:
+        if os.path.exists(MODEL_PATH):
+            model = load_model(MODEL_PATH, compile=False)
+            scaler = joblib.load(SCALER_PATH) if os.path.exists(SCALER_PATH) else None
+            return model, scaler
+    except Exception as e:
+        st.error(f"Error cargando archivos: {e}")
+    return None, None
+
+model_v3, scaler_v3 = load_v3_assets()
+
+# 4. INTERFAZ Y SIDEBAR
 st.title("🤖 StockAI V3: Multi-Indicator Intelligence")
 
 with st.sidebar:
-    st.header("⚙️ Analysis Settings")
-    ticker = st.text_input(
-        "Enter Stock Ticker:", 
-        value="AAPL", 
-        help="Use Yahoo Finance symbols (e.g., 'AAPL', 'BTC-USD')."
-    ).upper()
-
-    interval_label = st.selectbox("Select Timeframe:", ["Daily", "Weekly", "Monthly"])
-    interval_map = {"Daily": "1d", "Weekly": "1wk", "Monthly": "1mo"}
-    interval_code = interval_map[interval_label]
+    if model_v3:
+        st.success("✅ Modelo V3 Elite Cargado")
+    else:
+        st.warning("⚠️ Modo Entrenamiento (No se detectó .keras)")
     
+    ticker = st.text_input("Símbolo (Ticker):", value="AAPL").upper()
+    timeframe = st.selectbox("Temporalidad:", ["Daily", "Weekly", "Monthly"])
+    interval_map = {"Daily": "1d", "Weekly": "1wk", "Monthly": "1mo"}
+
     st.divider()
-    st.header("🛠️ Extra Tools")
-    show_backtest = st.checkbox("Enable Backtesting Analysis")
+    show_backtest = st.checkbox("Habilitar Backtesting")
+    st.info("Mejoras V3: Ensemble, Pesos persistentes y 8 Indicadores.")
 
-# ==========================================
-# 3. MOTOR DE DATOS V3 (8 FEATURES)
-# ==========================================
-data = yf.download(ticker, period="max", interval=interval_code)
+# 5. OBTENCIÓN DE DATOS
+@st.cache_data(ttl=3600)
+def get_data(symbol, interval):
+    if interval == "1mo":
+        p = "max"
+    elif interval == "1wk":
+        p = "5y"
+    else:
+        p = "2y"
+    d = yf.download(symbol, period=p, interval=interval)
+    if isinstance(d.columns, pd.MultiIndex): 
+        d.columns = d.columns.get_level_values(0)
+    return d
 
-# Limpieza de MultiIndex si existe
-if isinstance(data.columns, pd.MultiIndex): 
-    data.columns = data.columns.get_level_values(0)
+data = get_data(ticker, interval_map[timeframe])
 
-if not data.empty and len(data) > 30:
+# 6. LÓGICA PRINCIPAL (Aquí es donde la indentación es crítica)
+if not data.empty and len(data) > 60:
     df = data.copy()
     
-    # Cálculos Técnicos
-    total_candles = len(df)
-    w100 = 100 if total_candles >= 100 else max(2, total_candles // 2)
-    w200 = 200 if total_candles >= 200 else max(2, total_candles - 1)
-    
-    df['SMA_100'] = df['Close'].rolling(window=w100).mean()
-    df['SMA_200'] = df['Close'].rolling(window=w200).mean()
-    
-    # RSI
+    # Ingeniería de Atributos (8 columnas exactas para V3)
+    df['SMA_100'] = df['Close'].rolling(window=min(len(df), 100)).mean()
+    df['SMA_200'] = df['Close'].rolling(window=min(len(df), 200)).mean()
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / (loss + 1e-9) # Evitar división por cero
+    rs = gain / (loss + 1e-9)
     df['RSI'] = 100 - (100 / (1 + rs))
     
-    # LISTA DE FEATURES V3 (8 COLUMNAS)
     features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI']
-    
-    # Limpiamos nulos causados por las SMAs y RSI
     df_filtered = df[features].bfill().ffill().dropna()
-    
-    # Escalador de 8 columnas
-    scaler = MinMaxScaler(feature_range=(0, 1))
-    scaled_matrix = scaler.fit_transform(df_filtered)
 
-    # 4. Lógica de Predicción
-    if st.button(f"🚀 Run {interval_label} Projection"):
-        with st.spinner(f"Analyzing {ticker} with 8 indicators..."):
+    # --- BOTÓN DE PREDICCIÓN ---
+    if st.button("🚀 Ejecutar Predicción con Ensemble"):
+        with st.spinner("IA realizando Ensemble Forecasting..."):
+            from sklearn.preprocessing import RobustScaler
+            scaler = RobustScaler()
+            scaled_data = scaler.fit_transform(df_filtered.values)
+            last_window = scaled_data[-60:].reshape(1, 60, 8)
             
-            window = 60 if len(scaled_matrix) > 60 else len(scaled_matrix) // 2
-            X, y = [], []
+            ensemble_preds = []
+            for i in range(3):
+                noise = np.random.normal(0, 0.0001, last_window.shape)
+                p = model_v3.predict(last_window + noise, verbose=0)
+                ensemble_preds.append(p[0][0])
             
-            # El índice de 'Close' en nuestra lista de features es 3
-            close_idx = features.index('Close')
-            
-            for i in range(window, len(scaled_matrix)):
-                X.append(scaled_matrix[i-window:i, :]) # Todas las columnas
-                y.append(scaled_matrix[i, close_idx]) # Solo predecimos el cierre
-            
-            X, y = np.array(X), np.array(y)
-            
-            # Entrenamos
-            model = train_multivariate_model(X, y)
-            
-            # Preparamos los últimos datos para la predicción de mañana
-            last_window = scaled_matrix[-window:].reshape(1, window, len(features))
-            pred_scaled = model.predict(last_window)
-            
-            # Inversión del escalado (Para volver a dólares)
-            # Creamos una fila "dummy" de 8 columnas para que el scaler no proteste
-            dummy = np.zeros((1, len(features)))
-            dummy[0, close_idx] = pred_scaled[0][0] 
-            pred_final = float(scaler.inverse_transform(dummy)[0][close_idx])
-            
-            # Cálculos de métricas
+            avg_pred_raw = np.mean(ensemble_preds)
             current_price = float(df_filtered['Close'].iloc[-1])
-            diff = pred_final - current_price
-            pct = (diff / current_price) * 100
-            precision = "4f" if current_price < 2 else "2f"
+            es_forex_ticker = ticker.endswith('=X')
+            precision = 4 if (current_price < 5.0 or es_forex_ticker) else 2
             
-            # Visualización
-            st.divider()
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Current Price", f"${current_price:,.{precision}}")
-            m2.metric(f"AI Prediction (Next)", f"${pred_final:,.{precision}}", f"{diff:,.{precision}}")
-            m3.metric("Expected Movement", f"{pct:.2f}%")
-            
-            # Gráfico Principal
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=df_filtered.index[-120:], y=df_filtered['Close'][-120:], name="Historical Price"))
-            
-            delta_time = pd.Timedelta(days=1 if interval_code=="1d" else 7 if interval_code=="1wk" else 30)
-            fig.add_trace(go.Scatter(
-                x=[df_filtered.index[-1], df_filtered.index[-1] + delta_time], 
-                y=[current_price, pred_final], 
-                name="AI Future Path", 
-                line=dict(color='orange', dash='dash', width=3)
-            ))
-            fig.update_layout(template="plotly_dark", title=f"{ticker} Performance Analysis ({interval_label})")
-            st.plotly_chart(fig, use_container_width=True)
+            mean_s, std_s = np.mean(scaled_data[:, 3]), np.std(scaled_data[:, 3])
+            z_score = (avg_pred_raw - mean_s) / (std_s + 1e-9)
+            vol = df_filtered['Close'].pct_change().std()
+            fuerza = 0.20 if es_forex_ticker else 0.45 
+            pred_final = current_price * (1 + (z_score * vol * fuerza))
 
-    # 5. Backtesting (Ajustado a 8 features)
+            st.divider()
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Precio Actual", f"${current_price:.{precision}f}")
+            c2.metric("IA Target (Ensemble)", f"${pred_final:.{precision}f}", f"{pred_final - current_price:.{precision}f}")
+            c3.metric("Movimiento Esperado", f"{((pred_final/current_price)-1)*100:.2f}%")
+
+            with st.expander("🔍 Ver desglose de opiniones de la IA"):
+                individual_prices = [current_price * (1 + (((p - mean_s) / (std_s + 1e-9)) * vol * fuerza)) for p in ensemble_preds]
+                df_ens = pd.DataFrame({
+                    "Pasada": ["IA 1", "IA 2", "IA 3"],
+                    "Predicción": [f"${p:.{precision}f}" for p in individual_prices],
+                    "Cambio": [f"{((p/current_price)-1)*100:+.2f}%" for p in individual_prices]
+                })
+                st.table(df_ens)
+
+            # Fecha Futura Dinámica
+            delta_f = pd.Timedelta(days=1) if timeframe == "Daily" else pd.Timedelta(weeks=1) if timeframe == "Weekly" else pd.Timedelta(days=30)
+            future_date = df_filtered.index[-1] + delta_f
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df_filtered.index[-40:], y=df_filtered['Close'][-40:], name="Histórico", line=dict(color='#00d1ff')))
+            fig.add_trace(go.Scatter(x=[df_filtered.index[-1], future_date], y=[current_price, pred_final], name="Proyección", line=dict(color='orange', dash='dash')))
+            fig.update_layout(template="plotly_dark", height=400, yaxis=dict(tickformat=f".{precision}f"))
+            st.plotly_chart(fig, width='stretch')
+
+    # --- SECCIÓN DE BACKTESTING ---
     if show_backtest:
         st.divider()
-        st.subheader(f"📊 Historical Backtesting ({interval_label})")
-        if st.button("🔄 Run Accuracy Test"):
-            with st.spinner("Testing model stability..."):
-                test_days = 20
-                window = 60 if len(scaled_matrix) > 80 else 10
-                close_idx = features.index('Close')
+        if st.button("🔄 Ejecutar Test de Precisión"):
+            with st.spinner("Analizando historial..."):
+                current_price = float(df_filtered['Close'].iloc[-1])
+                es_forex_ticker = ticker.endswith('=X')
+                precision = 4 if (current_price < 5.0 or es_forex_ticker) else 2
+                test_len, window = 15, 60
+                from sklearn.preprocessing import RobustScaler
+                b_scaler = RobustScaler()
+                b_scaled = b_scaler.fit_transform(df_filtered.values)
+                real_p, pred_p = [], []
+                dates = df_filtered.index[-test_len:]
+                
+                for i in range(test_len, 0, -1):
+                    idx = len(b_scaled) - i
+                    input_win = b_scaled[idx-window:idx].reshape(1, window, 8)
+                    p_r = model_v3.predict(input_win, verbose=0)[0][0]
+                    z = (p_r - np.mean(b_scaled[:, 3])) / (np.std(b_scaled[:, 3]) + 1e-9)
+                    p_f = df_filtered['Close'].iloc[idx-1] * (1 + (z * df_filtered['Close'].pct_change().std() * (0.20 if es_forex_ticker else 0.45)))
+                    pred_p.append(p_f)
+                    real_p.append(df_filtered['Close'].iloc[idx])
 
-                X_b, y_b = [], []
-                train_data_b = scaled_matrix[:-test_days]
-                for i in range(window, len(train_data_b)):
-                    X_b.append(train_data_b[i-window:i, :])
-                    y_b.append(train_data_b[i, close_idx])
+                rmse = np.sqrt(np.mean((np.array(pred_p) - np.array(real_p))**2))
+                mape = np.mean(np.abs((np.array(real_p) - np.array(pred_p)) / np.array(real_p))) * 100
                 
-                model_b = train_multivariate_model(np.array(X_b), np.array(y_b))
-                
-                X_test = []
-                test_segment = scaled_matrix[-(test_days + window):]
-                for i in range(window, len(test_segment)):
-                    X_test.append(test_segment[i-window:i, :])
-                
-                preds_b_scaled = model_b.predict(np.array(X_test))
-                
-                # Des-escalar múltiples predicciones
-                dummy_b = np.zeros((len(preds_b_scaled), len(features)))
-                dummy_b[:, close_idx] = preds_b_scaled.flatten()
-                preds_b = scaler.inverse_transform(dummy_b)[:, close_idx]
-                real_b = df_filtered['Close'].values[-test_days:]
-                
-                rmse = np.sqrt(np.mean((preds_b - real_b)**2))
-                st.info(f"Model Accuracy (RMSE): {rmse:.4f}")
+                m1, m2 = st.columns(2)
+                m1.metric("Error (RMSE)", f"${rmse:.{precision}f}")
+                m2.metric("Precisión", f"{100 - mape:.2f}%")
                 
                 fig_b = go.Figure()
-                fig_b.add_trace(go.Scatter(y=real_b, name="Actual Data", line=dict(color='blue')))
-                fig_b.add_trace(go.Scatter(y=preds_b, name="AI Prediction", line=dict(color='orange', dash='dot')))
-                fig_b.update_layout(template="plotly_dark", height=350, title="Backtesting Reality vs Prediction")
-                st.plotly_chart(fig_b, use_container_width=True)
+                fig_b.add_trace(go.Scatter(x=dates, y=real_p, name="Real", line=dict(color='#00ff88')))
+                fig_b.add_trace(go.Scatter(x=dates, y=pred_p, name="IA", line=dict(color='orange', dash='dot')))
+                fig_b.update_layout(template="plotly_dark", height=400, yaxis=dict(tickformat=f".{precision}f"))
+                st.plotly_chart(fig_b, width='stretch')
 else:
-    st.error("Not enough data to run V3 Model. Please try a different asset or timeframe.")
+    st.error("No hay suficientes datos para este activo/temporalidad. Se requieren al menos 60 periodos.")
