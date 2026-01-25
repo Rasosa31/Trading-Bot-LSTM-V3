@@ -32,14 +32,21 @@ for name in model_names:
             st.error(f"Error cargando {name}: {e}")
 
 # 3. FUNCIONES DE DATOS
-def get_data(ticker, period="2y", interval="1d"):
+def get_data(ticker, period="5y", interval="1d"): # Aumentamos a 5y para asegurar indicadores
     df = yf.download(ticker, period=period, interval=interval)
+    
+    # Limpieza profunda de columnas para Streamlit Cloud
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
+    df.columns = [str(col).strip() for col in df.columns]
     
-    # Indicadores V4
+    if df.empty:
+        return pd.DataFrame()
+
+    # Cálculo de indicadores (asegurando que existan datos suficientes)
     df['SMA_100'] = df['Close'].rolling(window=100).mean()
     df['SMA_200'] = df['Close'].rolling(window=200).mean()
+    
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
