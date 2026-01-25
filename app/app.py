@@ -207,6 +207,14 @@ with tab2:
                     with st.expander("📄 Registro detallado"):
                         res_df = pd.DataFrame({"Resultado": ["✅ ACIERTO" if x == 1 else "❌ FALLO" for x in hits]}, index=dates)
                         st.dataframe(res_df, use_container_width=True)
+                        # --- BOTÓN DE DESCARGA ---
+                        csv = res_df.to_csv().encode('utf-8')
+                        st.download_button(
+                            label="📥 Descargar Reporte de Backtest (CSV)",
+                            data=csv,
+                            file_name=f"backtest_{ticker}_{tf_choice}.csv",
+                            mime='text/csv',
+                        )
 
                 except Exception as e:
                     st.error(f"Error crítico: {e}")
