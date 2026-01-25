@@ -95,7 +95,25 @@ with tab1:
             with st.spinner("Los expertos están deliberando..."):
                 scaler = RobustScaler()
                 features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI']
-                scaled = scaler.fit_transform(df[features].values)
+                df_clean = df[features].ffill().bfill()
+                scaled = scaler.fit_transform(df_clean.values)
+
+                # VENTANA DINÁMICA: Si hay menos de 60, usa el máximo disponible
+            disponibles = len(scaled)
+            ventana_tam = min(60, disponibles - 1) 
+            
+            if ventana_tam < 10:
+                st.error("Realmente no hay datos suficientes para predecir.")
+            else:
+                # Tomamos las últimas 'ventana_tam' velas y las rellenamos con ceros si faltan para llegar a 60
+                input_data = scaled[-ventana_tam:]
+                if ventana_tam < 60:
+                    # Pad (relleno) con ceros al principio para que el modelo reciba 60
+                    padding = np.zeros((60 - ventana_tam, 8))
+                    input_data = np.vstack([padding, input_data])
+                
+                last_window = input_data.reshape(1, 60, 8)
+                # ... (procede con el predict)
                 
                 # Inferencia
                 last_window = scaled[-60:].reshape(1, 60, 8)
@@ -152,7 +170,7 @@ with tab2:
     st.header("🧪 Evaluación de Desempeño Adaptativa")
     
     # 1. Validación de datos mínimos antes de empezar
-    if df.empty or len(df) < 70:
+    if df.empty or len(df) < 65:
         st.error(f"⚠️ Datos insuficientes para {ticker} en esta temporalidad. Se requieren al menos 70 velas (disponibles: {len(df)}).")
     else:
         # Ajustamos el máximo de días de prueba según lo que hay disponible
