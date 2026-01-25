@@ -29,21 +29,33 @@ for name in model_names:
         except: pass
 
 # 3. FUNCIONES DE DATOS
-def get_data(ticker, period="5y", interval="1d"):
-    df = yf.download(ticker, period=period, interval=interval)
-    if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-    df.columns = [str(col).strip() for col in df.columns]
-    if df.empty: return pd.DataFrame()
+def get_data(ticker, timeframe):
+    # Mapeo de periodos para asegurar suficiente historia
+    period_map = {"Daily": "5y", "Weekly": "max", "Monthly": "max"}
+    interval_map = {"Daily": "1d", "Weekly": "1wk", "Monthly": "1mo"}
     
-    # Indicadores
-    df['SMA_100'] = df['Close'].rolling(window=100).mean()
-    df['SMA_200'] = df['Close'].rolling(window=200).mean()
+    df = yf.download(ticker, period=period_map[timeframe], interval=interval_map[timeframe])
+    
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    df.columns = [str(col).strip() for col in df.columns]
+    
+    if df.empty or len(df) < 10: # Si es extremadamente nuevo
+        return pd.DataFrame()
+
+    # INDICADORES ADAPTATIVOS: Si no hay datos para 200, usa lo que haya
+    length = len(df)
+    df['SMA_100'] = df['Close'].rolling(window=min(100, length//2)).mean()
+    df['SMA_200'] = df['Close'].rolling(window=min(200, length//2)).mean()
+    
+    # RSI estándar
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / (loss + 1e-9)
-    df['RSI'] = 100 - (100 / (1 + rs))
-    return df.dropna()
+    df['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-9))))
+    
+    # Rellenar nulos iniciales para no perder filas preciosas en activos cortos
+    return df.bfill().ffill()
 
 # 4. INTERFAZ
 st.set_page_config(page_title="StockAI V4 Pro", layout="wide")
@@ -137,59 +149,74 @@ with tab1:
             
 # --- TAB 2: BACKTESTING V4 ---
 with tab2:
-    st.header("🧪 Evaluación de Desempeño")
-    test_days = st.number_input("Velas de prueba (hacia atrás):", 10, 200, 30)
+    st.header("🧪 Evaluación de Desempeño Adaptativa")
     
-    if st.button("📊 Iniciar Backtest"):
-        if len(model_committee) == 0:
-            st.error("No hay modelos cargados.")
-        else:
-            with st.spinner("Simulando operaciones..."):
-                scaler = RobustScaler()
-                features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI']
-                scaled = scaler.fit_transform(df[features].values)
-                
-                hits = []
-                dates = []
-                
-                # Bucle de simulación
-                for i in range(len(scaled) - test_days, len(scaled)):
-                    window = scaled[i-60:i].reshape(1, 60, 8)
+    # 1. Validación de datos mínimos antes de empezar
+    if df.empty or len(df) < 70:
+        st.error(f"⚠️ Datos insuficientes para {ticker} en esta temporalidad. Se requieren al menos 70 velas (disponibles: {len(df)}).")
+    else:
+        # Ajustamos el máximo de días de prueba según lo que hay disponible
+        max_posible = len(df) - 62
+        test_days = st.number_input("Velas de prueba:", 5, min(200, max_posible), min(30, max_posible))
+        
+        if st.button("📊 Iniciar Backtest Profesional"):
+            with st.spinner(f"Simulando {test_days} decisiones del comité..."):
+                try:
+                    scaler = RobustScaler()
+                    features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI']
                     
-                    # Predicción del promedio del comité
-                    preds = [m.predict(window, verbose=0)[0][0] for m in model_committee]
-                    avg_p_raw = np.mean(preds)
+                    # Aseguramos que no haya NaNs antes de escalar
+                    df_clean = df[features].ffill().bfill()
+                    scaled = scaler.fit_transform(df_clean.values)
                     
-                    # Comparación: ¿Predijo la dirección correcta?
-                    # Dirección predicha vs Precio de la vela anterior (i-1)
-                    dir_pred = 1 if avg_p_raw > scaled[i-1, 3] else -1
-                    dir_real = 1 if scaled[i, 3] > scaled[i-1, 3] else -1
+                    hits = []
+                    dates = []
+                    progreso = st.progress(0)
+
+                    # 2. Bucle de simulación con control de límites
+                    for i in range(len(scaled) - test_days, len(scaled)):
+                        # Actualizamos barra de progreso
+                        progreso.progress((i - (len(scaled) - test_days)) / test_days)
+                        
+                        # Ventana de 60 velas para el LSTM
+                        window = scaled[i-60:i].reshape(1, 60, 8)
+                        
+                        # Predicción del promedio del comité
+                        preds = [m.predict(window, verbose=0)[0][0] for m in model_committee]
+                        avg_p_raw = np.mean(preds)
+                        
+                        # Lógica de acierto: Comparar dirección predicha vs Realidad
+                        # ¿El comité dijo que el cierre de hoy (i) sería mayor al de ayer (i-1)?
+                        dir_pred = 1 if avg_p_raw > scaled[i-1, 3] else -1
+                        dir_real = 1 if scaled[i, 3] > scaled[i-1, 3] else -1
+                        
+                        hits.append(1 if dir_pred == dir_real else 0)
+                        dates.append(df.index[i])
+
+                    progreso.empty()
+
+                    # 3. Visualización de Resultados
+                    acc_series = pd.Series(hits, index=dates)
+                    accuracy = acc_series.mean() * 100
                     
-                    hits.append(1 if dir_pred == dir_real else 0)
-                    dates.append(df.index[i])
-                
-                # --- PROCESAMIENTO DE RESULTADOS ---
-                acc_series = pd.Series(hits, index=dates)
-                accuracy = acc_series.mean() * 100
-                
-                # Métricas de Backtest
-                c1, c2 = st.columns(2)
-                c1.metric("Efectividad (Hit Rate)", f"{accuracy:.2f}%")
-                c2.metric("Total Velas Testeadas", len(hits))
-                
-                # Gráfico de Curva de Aprendizaje / Aciertos
-                st.subheader("Curva de Precisión (Media Móvil 5 periodos)")
-                
-                # Limpiamos los NaN para evitar el TypeError
-                chart_data = acc_series.rolling(window=5).mean().fillna(acc_series.mean())
-                
-                # Usamos un gráfico de área para que se vea más profesional
-                st.area_chart(chart_data)
-                
-                # Tabla de resumen
-                with st.expander("Ver detalle de operaciones"):
-                    res_df = pd.DataFrame({
-                        "Fecha": dates,
-                        "Resultado": ["✅ Acierto" if x == 1 else "❌ Fallo" for x in hits]
-                    }).set_index("Fecha")
-                    st.dataframe(res_df.tail(20), use_container_width=True)
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Efectividad", f"{accuracy:.2f}%")
+                    c2.metric("Aciertos", sum(hits))
+                    c3.metric("Fallos", len(hits) - sum(hits))
+                    
+                    # Gráfico de estabilidad (Moving Accuracy)
+                    st.subheader("Consistencia del Comité en el tiempo")
+                    # Usamos ventana de 5 o menos si el test es muy corto
+                    v_rolling = min(5, len(hits))
+                    chart_data = acc_series.rolling(window=v_rolling).mean().fillna(acc_series.mean())
+                    st.area_chart(chart_data)
+
+                    with st.expander("📄 Registro detallado de señales"):
+                        res_df = pd.DataFrame({
+                            "Fecha": dates,
+                            "Resultado": ["✅ ACIERTO" if x == 1 else "❌ FALLO" for x in hits]
+                        }).set_index("Fecha")
+                        st.dataframe(res_df, use_container_width=True)
+
+                except Exception as e:
+                    st.error(f"Error crítico en el cálculo: {e}")
