@@ -70,7 +70,7 @@ with st.sidebar:
     st.divider()
     fuerza = st.slider("Sensibilidad (Fuerza):", 0.1, 1.0, 0.4)
 
-df = get_data(ticker, interval=interval_map[tf_choice])
+df = get_data(ticker, tf_choice)
 
 # --- TAB 1: ANÁLISIS EN VIVO ---
 with tab1:
