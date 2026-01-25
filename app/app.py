@@ -92,35 +92,99 @@ with tab1:
             m2.metric("Target Comité", f"{pred_final:.{precision}f}", f"{pred_final-curr_p:+.{precision}f}")
             m3.metric("Acuerdo", f"{max(0, 100-(np.std(preds_raw)*1000)):.1f}%")
 
+            # ... (después de calcular pred_final y las métricas m1, m2, m3) ...
+
+            # --- SECCIÓN: EL CONSEJO DE LOS EXPERTOS ---
+            st.markdown("### 🗣️ Veredictos del Comité")
+            
+            # Definimos los perfiles de personalidad
+            perfiles = {
+                "m1_puro": {"emoji": "⚖️", "nick": "El Purista", "desc": "Enfocado en estructura de precio."},
+                "m2_volatilidad": {"emoji": "🌪️", "nick": "Cazador de Volatilidad", "desc": "Especialista en movimientos bruscos."},
+                "m3_tendencia": {"emoji": "📈", "nick": "Seguidor de Tendencia", "desc": "Busca la dirección macro."},
+                "m4_memoria": {"emoji": "🧠", "nick": "Analista Histórico", "desc": "Recuerda patrones de largo plazo."},
+                "m5_agresivo": {"emoji": "⚡", "nick": "El Agresivo", "desc": "Reacciona rápido a cambios mínimos."}
+            }
+
+            cols = st.columns(5)
+            for i, name in enumerate(model_names):
+                with cols[i]:
+                    # Calculamos el precio individual para este modelo
+                    p_raw = preds_raw[i]
+                    z_ind = (p_raw - mean_c) / (std_c + 1e-9)
+                    p_final_ind = curr_p * (1 + (z_ind * vol * fuerza))
+                    
+                    diff = p_final_ind - curr_p
+                    color = "green" if diff > 0 else "red"
+                    flecha = "🔼" if diff > 0 else "🔽"
+                    
+                    st.markdown(f"""
+                    <div style="border: 1px solid #444; border-radius: 10px; padding: 10px; text-align: center;">
+                        <h2 style="margin:0;">{perfiles[name]['emoji']}</h2>
+                        <b style="font-size: 0.8em;">{perfiles[name]['nick']}</b><br>
+                        <span style="color:{color}; font-weight:bold;">{flecha} {p_final_ind:{formato}}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+            with st.expander("ℹ️ ¿Quiénes son estos expertos?"):
+                for name in model_names:
+                    st.write(f"**{perfiles[name]['emoji']} {perfiles[name]['nick']}:** {perfiles[name]['desc']}")
+
 # --- TAB 2: BACKTESTING V4 ---
 with tab2:
     st.header("🧪 Evaluación de Desempeño")
-    test_days = st.number_input("Días de prueba:", 10, 100, 20)
+    test_days = st.number_input("Velas de prueba (hacia atrás):", 10, 200, 30)
     
     if st.button("📊 Iniciar Backtest"):
-        with st.spinner("Simulando operaciones pasadas..."):
-            scaler = RobustScaler()
-            features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI']
-            scaled = scaler.fit_transform(df[features].values)
-            
-            results = []
-            # Simulamos los últimos 'test_days'
-            for i in range(len(scaled) - test_days, len(scaled)):
-                window = scaled[i-60:i].reshape(1, 60, 8)
-                preds = [m.predict(window, verbose=0)[0][0] for m in model_committee]
+        if len(model_committee) == 0:
+            st.error("No hay modelos cargados.")
+        else:
+            with st.spinner("Simulando operaciones..."):
+                scaler = RobustScaler()
+                features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI']
+                scaled = scaler.fit_transform(df[features].values)
                 
-                # Predicción promediada
-                avg_p_raw = np.mean(preds)
-                real_p_raw = scaled[i, 3] # Lo que realmente pasó
+                hits = []
+                dates = []
                 
-                # ¿El bot dijo que subía y subió? ¿O dijo que bajaba y bajó?
-                dir_pred = 1 if avg_p_raw > scaled[i-1, 3] else -1
-                dir_real = 1 if real_p_raw > scaled[i-1, 3] else -1
+                # Bucle de simulación
+                for i in range(len(scaled) - test_days, len(scaled)):
+                    window = scaled[i-60:i].reshape(1, 60, 8)
+                    
+                    # Predicción del promedio del comité
+                    preds = [m.predict(window, verbose=0)[0][0] for m in model_committee]
+                    avg_p_raw = np.mean(preds)
+                    
+                    # Comparación: ¿Predijo la dirección correcta?
+                    # Dirección predicha vs Precio de la vela anterior (i-1)
+                    dir_pred = 1 if avg_p_raw > scaled[i-1, 3] else -1
+                    dir_real = 1 if scaled[i, 3] > scaled[i-1, 3] else -1
+                    
+                    hits.append(1 if dir_pred == dir_real else 0)
+                    dates.append(df.index[i])
                 
-                results.append(1 if dir_pred == dir_real else 0)
-            
-            accuracy = (sum(results) / len(results)) * 100
-            st.success(f"Efectividad del Comité: {accuracy:.2f}%")
-            
-            # Gráfico de Aciertos
-            st.line_chart(pd.Series(results).rolling(5).mean(), help="Media móvil de aciertos (1=Acierto, 0=Fallo)")
+                # --- PROCESAMIENTO DE RESULTADOS ---
+                acc_series = pd.Series(hits, index=dates)
+                accuracy = acc_series.mean() * 100
+                
+                # Métricas de Backtest
+                c1, c2 = st.columns(2)
+                c1.metric("Efectividad (Hit Rate)", f"{accuracy:.2f}%")
+                c2.metric("Total Velas Testeadas", len(hits))
+                
+                # Gráfico de Curva de Aprendizaje / Aciertos
+                st.subheader("Curva de Precisión (Media Móvil 5 periodos)")
+                
+                # Limpiamos los NaN para evitar el TypeError
+                chart_data = acc_series.rolling(window=5).mean().fillna(acc_series.mean())
+                
+                # Usamos un gráfico de área para que se vea más profesional
+                st.area_chart(chart_data)
+                
+                # Tabla de resumen
+                with st.expander("Ver detalle de operaciones"):
+                    res_df = pd.DataFrame({
+                        "Fecha": dates,
+                        "Resultado": ["✅ Acierto" if x == 1 else "❌ Fallo" for x in hits]
+                    }).set_index("Fecha")
+                    st.dataframe(res_df.tail(20), use_container_width=True)
