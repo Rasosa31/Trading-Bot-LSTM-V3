@@ -64,67 +64,75 @@ df = get_data(ticker, interval=interval_map[tf_choice])
 with tab1:
     if not df.empty:
         df_f = df.tail(days_to_show)
-        precision = 4 if df_f['Close'].iloc[-1] < 10 else 2
         
-        fig = go.Figure(data=[go.Candlestick(x=df_f.index, open=df_f['Open'], high=df_f['High'], low=df_f['Low'], close=df_f['Close'])])
+        # 1. Definir precisión global
+        curr_p = float(df['Close'].iloc[-1])
+        precision = 4 if curr_p < 10 else 2
+        formato = f".{precision}f" # <--- Aquí se define la variable faltante
+        
+        # 2. Gráfico
+        fig = go.Figure(data=[go.Candlestick(
+            x=df_f.index, open=df_f['Open'], high=df_f['High'], 
+            low=df_f['Low'], close=df_f['Close'], name="Precio"
+        )])
         fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=500)
         st.plotly_chart(fig, use_container_width=True)
 
+        # 3. Botón de Predicción
         if st.button("🚀 Consultar Comité de Expertos"):
-            scaler = RobustScaler()
-            features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI']
-            scaled = scaler.fit_transform(df[features].values)
-            
-            # Inferencia
-            last_window = scaled[-60:].reshape(1, 60, 8)
-            preds_raw = [m.predict(last_window, verbose=0)[0][0] for m in model_committee]
-            
-            # Des-escalado manual
-            curr_p = float(df['Close'].iloc[-1])
-            mean_c, std_c = np.mean(scaled[:, 3]), np.std(scaled[:, 3])
-            vol = df['Close'].pct_change().std()
-            
-            z_score = (np.mean(preds_raw) - mean_c) / (std_c + 1e-9)
-            pred_final = curr_p * (1 + (z_score * vol * fuerza))
-            
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Precio Actual", f"{curr_p:.{precision}f}")
-            m2.metric("Target Comité", f"{pred_final:.{precision}f}", f"{pred_final-curr_p:+.{precision}f}")
-            m3.metric("Acuerdo", f"{max(0, 100-(np.std(preds_raw)*1000)):.1f}%")
+            with st.spinner("Los expertos están deliberando..."):
+                scaler = RobustScaler()
+                features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI']
+                scaled = scaler.fit_transform(df[features].values)
+                
+                # Inferencia
+                last_window = scaled[-60:].reshape(1, 60, 8)
+                preds_raw = [m.predict(last_window, verbose=0)[0][0] for m in model_committee]
+                
+                # Des-escalado manual
+                mean_c, std_c = np.mean(scaled[:, 3]), np.std(scaled[:, 3])
+                vol = df['Close'].pct_change().std()
+                
+                # Predicción Consenso
+                z_score = (np.mean(preds_raw) - mean_c) / (std_c + 1e-9)
+                pred_final = curr_p * (1 + (z_score * vol * fuerza))
+                
+                # MÉTRICAS PRINCIPALES
+                st.divider()
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Precio Actual", f"{curr_p:{formato}}")
+                m2.metric("Target Comité", f"{pred_final:{formato}}", f"{pred_final-curr_p:+.{precision}f}")
+                m3.metric("Acuerdo", f"{max(0, 100-(np.std(preds_raw)*1000)):.1f}%")
 
-            # ... (después de calcular pred_final y las métricas m1, m2, m3) ...
+                # --- SECCIÓN: PERSONALIDAD DE LOS EXPERTOS ---
+                st.markdown("### 🗣️ Veredictos Individuales")
+                
+                perfiles = {
+                    "m1_puro": {"emoji": "⚖️", "nick": "El Purista"},
+                    "m2_volatilidad": {"emoji": "🌪️", "nick": "Cazador"},
+                    "m3_tendencia": {"emoji": "📈", "nick": "Trend-Follower"},
+                    "m4_memoria": {"emoji": "🧠", "nick": "Analista"},
+                    "m5_agresivo": {"emoji": "⚡", "nick": "Agresivo"}
+                }
 
-            # --- SECCIÓN: EL CONSEJO DE LOS EXPERTOS ---
-            st.markdown("### 🗣️ Veredictos del Comité")
-            
-            # Definimos los perfiles de personalidad
-            perfiles = {
-                "m1_puro": {"emoji": "⚖️", "nick": "El Purista", "desc": "Enfocado en estructura de precio."},
-                "m2_volatilidad": {"emoji": "🌪️", "nick": "Cazador de Volatilidad", "desc": "Especialista en movimientos bruscos."},
-                "m3_tendencia": {"emoji": "📈", "nick": "Seguidor de Tendencia", "desc": "Busca la dirección macro."},
-                "m4_memoria": {"emoji": "🧠", "nick": "Analista Histórico", "desc": "Recuerda patrones de largo plazo."},
-                "m5_agresivo": {"emoji": "⚡", "nick": "El Agresivo", "desc": "Reacciona rápido a cambios mínimos."}
-            }
-
-            cols = st.columns(5)
-            for i, name in enumerate(model_names):
-                with cols[i]:
-                    # Calculamos el precio individual para este modelo
-                    p_raw = preds_raw[i]
-                    z_ind = (p_raw - mean_c) / (std_c + 1e-9)
-                    p_final_ind = curr_p * (1 + (z_ind * vol * fuerza))
-                    
-                    diff = p_final_ind - curr_p
-                    color = "green" if diff > 0 else "red"
-                    flecha = "🔼" if diff > 0 else "🔽"
-                    
-                    st.markdown(f"""
-                    <div style="border: 1px solid #444; border-radius: 10px; padding: 10px; text-align: center;">
-                        <h2 style="margin:0;">{perfiles[name]['emoji']}</h2>
-                        <b style="font-size: 0.8em;">{perfiles[name]['nick']}</b><br>
-                        <span style="color:{color}; font-weight:bold;">{flecha} {p_final_ind:{formato}}</span>
-                    </div>
-                    """, unsafe_allow_html=True)
+                cols = st.columns(5)
+                for i, name in enumerate(model_names):
+                    with cols[i]:
+                        p_ind_raw = preds_raw[i]
+                        z_ind = (p_ind_raw - mean_c) / (std_c + 1e-9)
+                        p_final_ind = curr_p * (1 + (z_ind * vol * fuerza))
+                        
+                        diff = p_final_ind - curr_p
+                        color = "#00ff00" if diff > 0 else "#ff4b4b"
+                        flecha = "🔼" if diff > 0 else "🔽"
+                        
+                        st.markdown(f"""
+                        <div style="border: 1px solid #444; border-radius: 10px; padding: 10px; text-align: center; background-color: #1e1e1e;">
+                            <h2 style="margin:0;">{perfiles[name]['emoji']}</h2>
+                            <b style="font-size: 0.7em; color: #aaa;">{perfiles[name]['nick']}</b><br>
+                            <span style="color:{color}; font-weight:bold; font-size: 0.9em;">{flecha} {p_final_ind:{formato}}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
                     
             with st.expander("ℹ️ ¿Quiénes son estos expertos?"):
                 for name in model_names:
