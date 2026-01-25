@@ -134,10 +134,7 @@ with tab1:
                         </div>
                         """, unsafe_allow_html=True)
                     
-            with st.expander("ℹ️ ¿Quiénes son estos expertos?"):
-                for name in model_names:
-                    st.write(f"**{perfiles[name]['emoji']} {perfiles[name]['nick']}:** {perfiles[name]['desc']}")
-
+            
 # --- TAB 2: BACKTESTING V4 ---
 with tab2:
     st.header("🧪 Evaluación de Desempeño")
