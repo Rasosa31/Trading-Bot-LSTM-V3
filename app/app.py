@@ -6,6 +6,9 @@ import plotly.graph_objects as go
 from sklearn.preprocessing import RobustScaler
 import os
 
+if 'bitacora' not in st.session_state:
+    st.session_state.bitacora = []
+
 # 1. CONFIGURACIÓN DE ESTABILIDAD
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -115,6 +118,18 @@ with tab1:
                     m2.metric("Target Comité", f"{pred_final:{formato}}", f"{pred_final-curr_p:+.{precision}f}")
                     m3.metric("Acuerdo", f"{max(0, 100-(np.std(preds_raw)*1000)):.1f}%")
 
+                    # --- GUARDAR EN BITÁCORA ---
+                    registro = {
+                        "Fecha Consulta": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
+                        "Activo": ticker,
+                        "Temporalidad": tf_choice,
+                        "Precio Cierre": f"{curr_p:{formato}}",
+                        "Predicción": f"{pred_final:{formato}}",
+                        "Dirección": "⬆️ ALZA" if pred_final > curr_p else "⬇️ BAJA",
+                        "Acuerdo %": f"{max(0, 100-(np.std(preds_raw)*1000)):.1f}%"
+                    }
+                    st.session_state.bitacora.append(registro)
+
                     st.markdown("### 🗣️ Veredictos Individuales")
                     perfiles = {
                         "m1_puro": {"emoji": "⚖️", "nick": "El Purista"},
@@ -142,6 +157,24 @@ with tab1:
                             </div>
                             """, unsafe_allow_html=True)
 
+            st.divider()
+        st.subheader("📋 Bitácora de Consultas (Sesión Actual)")
+        if st.session_state.bitacora:
+            log_df = pd.DataFrame(st.session_state.bitacora)
+            st.dataframe(log_df, use_container_width=True)
+            
+            # Botón para descargar la bitácora completa
+            csv_log = log_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                "📥 Descargar Diario de Predicciones",
+                csv_log,
+                "diario_trading.csv",
+                "text/csv",
+                key='download-csv-log'
+            )
+        else:
+            st.info("Aún no hay consultas en esta sesión. Haz clic en 'Consultar Comité' para empezar el registro.")
+            
 # --- TAB 2: BACKTESTING V4 ---
 with tab2:
     st.header("🧪 Evaluación de Desempeño Adaptativa")
