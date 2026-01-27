@@ -177,25 +177,33 @@ with tab2:
                     acc_series = pd.Series(hits, index=dates)
                     accuracy = acc_series.mean() * 100
                 
+                    # Cálculo de Ganancia Estimada (Pips o Puntos)
+                    # Tomamos la diferencia de precio entre el cierre de hoy y ayer para cada acierto
                     pips_totales = 0
                     for i in range(len(scaled) - test_days, len(scaled)):
                         idx_hit = i - (len(scaled) - test_days)
-                        cambio = abs(df['Close'].iloc[i] - df['Close'].iloc[i-1])
-                        pips_totales += cambio if hits[idx_hit] == 1 else -cambio
+                        if hits[idx_hit] == 1: # Si acertó la dirección
+                            cambio = abs(df['Close'].iloc[i] - df['Close'].iloc[i-1])
+                            pips_totales += cambio
+                        else: # Si falló, restamos el movimiento
+                            cambio = abs(df['Close'].iloc[i] - df['Close'].iloc[i-1])
+                            pips_totales -= cambio
 
-                    es_forex = ticker.endswith("=X") or df['Close'].iloc[-1] < 10
+                    # Detector de unidad
+                    es_forex = ticker.endswith("=X") or precision > 2
                     if es_forex:
-                        factor = 100 if "JPY" in ticker else 10000
-                        valor_final = pips_totales * factor
-                        etiqueta = "Pips Ganados/Perdidos"
+                        factor = 10000 if "JPY" not in ticker else 100
+                        valor_pips = pips_totales * factor
+                        etiqueta_pips = "Pips Ganados"
                     else:
-                        valor_final = pips_totales
-                        etiqueta = "Puntos/USD"
+                        valor_pips = pips_totales
+                        etiqueta_pips = "Puntos/USD"
 
+                    # MÉTRICAS EN PANTALLA
                     st.divider()
                     c1, c2, c3, c4 = st.columns(4)
                     c1.metric("Efectividad", f"{accuracy:.2f}%")
-                    c2.metric(etiqueta, f"{valor_final:+.2f}")
+                    c2.metric(etiqueta_pips, f"{valor_pips:+.2f}")
                     c3.metric("Aciertos ✅", sum(hits))
                     c4.metric("Fallos ❌", len(hits) - sum(hits))
                     
