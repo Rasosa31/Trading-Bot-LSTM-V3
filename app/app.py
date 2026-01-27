@@ -224,13 +224,7 @@ with tab2:
                             file_name=f"backtest_{ticker}_{tf_choice}.csv",
                             mime='text/csv',
                         )
-                        csv = res_df.to_csv().encode('utf-8')
-                        st.download_button(
-                            label="📥 Descargar Reporte de Backtest (CSV)",
-                            data=csv,
-                            file_name=f"backtest_{ticker}_{tf_choice}.csv",
-                            mime='text/csv',
-                        )
+                        
 
                 except Exception as e:
                     st.error(f"Error crítico: {e}")
