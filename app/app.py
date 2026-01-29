@@ -11,21 +11,22 @@ from streamlit_gsheets import GSheetsConnection
 # Función para guardar en Google Sheets
 def guardar_en_sheets(registro):
     try:
-        # 1. Conexión limpia (Toma la URL directamente de Secrets)
+        # 1. Conexión usando el nombre del bloque en Secrets
         conn = st.connection("gsheets", type=GSheetsConnection)
         
-        # 2. Leer sin forzar columnas (Esto evita el 404)
-        # Quitamos usecols para que el bot simplemente lea lo que haya
+        # 2. Leer la pestaña 'Consultas'
+        # Nota: Si está vacía (solo encabezados), esto funcionará bien.
         existing_data = conn.read(worksheet="Consultas")
         
-        # 3. Limpieza de filas vacías
+        # 3. Limpiar datos nulos si los hay
         if existing_data is not None:
             existing_data = existing_data.dropna(how="all")
         
-        # 4. Crear nuevo DataFrame con la fila actual
+        # 4. Crear el nuevo registro (Asegúrate de que las llaves del 
+        # diccionario 'registro' coincidan con los nombres de tu imagen)
         new_row = pd.DataFrame([registro])
         
-        # 5. Concatenar y actualizar
+        # 5. Unir y Actualizar
         if existing_data is not None and not existing_data.empty:
             updated_df = pd.concat([existing_data, new_row], ignore_index=True)
         else:
@@ -34,10 +35,9 @@ def guardar_en_sheets(registro):
         conn.update(worksheet="Consultas", data=updated_df)
         return True
     except Exception as e:
-        # Este mensaje nos dirá exactamente qué pasa si falla
         st.error(f"Error al guardar en Google Sheets: {e}")
         return False
-
+    
 # 1. CONFIGURACIÓN DE ESTABILIDAD
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
