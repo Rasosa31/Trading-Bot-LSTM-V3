@@ -13,8 +13,6 @@ env/
 # Datos y Modelos (Para evitar que pesen en la nube)
 data/
 *.csv
-*.h5
-*.keras
 *.pickle
 
 # Sistema y Configuración
@@ -22,3 +20,6 @@ data/
 .DS_Store
 .vscode/
 .idea/
+
+.streamlit/
+secrets.toml

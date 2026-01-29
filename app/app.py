@@ -6,6 +6,27 @@ import plotly.graph_objects as go
 from sklearn.preprocessing import RobustScaler
 import os
 
+from streamlit_gsheets import GSheetsConnection
+
+# Función para guardar en Google Sheets
+def guardar_en_sheets(registro):
+    try:
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        # Leer datos actuales
+        existing_data = conn.read(worksheet="Consultas", usecols=list(range(7)))
+        existing_data = existing_data.dropna(how="all")
+        
+        # Crear nuevo DataFrame con la fila actual
+        new_row = pd.DataFrame([registro])
+        
+        # Concatenar y actualizar
+        updated_df = pd.concat([existing_data, new_row], ignore_index=True)
+        conn.update(worksheet="Consultas", data=updated_df)
+        return True
+    except Exception as e:
+        st.error(f"Error al guardar en Google Sheets: {e}")
+        return False
+
 if 'bitacora' not in st.session_state:
     st.session_state.bitacora = []
 
@@ -128,6 +149,11 @@ with tab1:
                         "Dirección": "⬆️ ALZA" if pred_final > curr_p else "⬇️ BAJA",
                         "Acuerdo %": f"{max(0, 100-(np.std(preds_raw)*1000)):.1f}%"
                     }
+                    
+                    # Guardar en la nube automáticamente
+                    if guardar_en_sheets(registro):
+                        st.success("✅ Predicción registrada en Google Sheets!")
+                    
                     st.session_state.bitacora.append(registro)
 
                     st.markdown("### 🗣️ Veredictos Individuales")
