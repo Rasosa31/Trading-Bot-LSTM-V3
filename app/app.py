@@ -11,24 +11,32 @@ from streamlit_gsheets import GSheetsConnection
 # Función para guardar en Google Sheets
 def guardar_en_sheets(registro):
     try:
+        # 1. Conexión limpia (Toma la URL directamente de Secrets)
         conn = st.connection("gsheets", type=GSheetsConnection)
-        # Leer datos actuales
-        existing_data = conn.read(worksheet="Consultas", usecols=list(range(7)))
-        existing_data = existing_data.dropna(how="all")
         
-        # Crear nuevo DataFrame con la fila actual
+        # 2. Leer sin forzar columnas (Esto evita el 404)
+        # Quitamos usecols para que el bot simplemente lea lo que haya
+        existing_data = conn.read(worksheet="Consultas")
+        
+        # 3. Limpieza de filas vacías
+        if existing_data is not None:
+            existing_data = existing_data.dropna(how="all")
+        
+        # 4. Crear nuevo DataFrame con la fila actual
         new_row = pd.DataFrame([registro])
         
-        # Concatenar y actualizar
-        updated_df = pd.concat([existing_data, new_row], ignore_index=True)
+        # 5. Concatenar y actualizar
+        if existing_data is not None and not existing_data.empty:
+            updated_df = pd.concat([existing_data, new_row], ignore_index=True)
+        else:
+            updated_df = new_row
+            
         conn.update(worksheet="Consultas", data=updated_df)
         return True
     except Exception as e:
+        # Este mensaje nos dirá exactamente qué pasa si falla
         st.error(f"Error al guardar en Google Sheets: {e}")
         return False
-
-if 'bitacora' not in st.session_state:
-    st.session_state.bitacora = []
 
 # 1. CONFIGURACIÓN DE ESTABILIDAD
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
