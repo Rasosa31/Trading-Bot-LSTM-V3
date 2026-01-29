@@ -39,8 +39,8 @@ def guardar_en_sheets(registro):
         conn.update(worksheet="Consultas", data=updated_df)
         return True
     except Exception as e:
-        # Solo mostrar error si estamos en modo debug o si es crítico
-        print(f"Error Sheets: {e}")
+        # Cambia el 'print' por un 'st.error' para ver el problema real en pantalla
+        st.error(f"Error técnico real: {e}") 
         return False
 
 # 3. CONFIGURACIÓN DE ESTABILIDAD TF
