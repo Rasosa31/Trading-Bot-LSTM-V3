@@ -5,5 +5,5 @@ yfinance
 plotly
 scikit-learn
 tensorflow
+st-gsheets-connection
 gspread
-streamlit-gsheets
