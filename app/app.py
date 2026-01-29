@@ -78,8 +78,8 @@ def get_data(ticker, timeframe):
     return df.bfill().ffill()
 
 # 4. INTERFAZ
-st.set_page_config(page_title="StockAI V4 Pro", layout="wide")
-tab1, tab2 = st.tabs(["📈 Análisis en Vivo", "🧪 Backtesting V4"])
+st.set_page_config(page_title="StockAI V5 Pro", layout="wide")
+tab1, tab2 = st.tabs(["📈 Análisis en Vivo", "🧪 Backtesting V5"])
 
 with st.sidebar:
     st.header("Configuración")
