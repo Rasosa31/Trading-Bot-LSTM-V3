@@ -6,6 +6,10 @@ import plotly.graph_objects as go
 from sklearn.preprocessing import RobustScaler
 import os
 
+# Inicializar la bitácora en la sesión si no existe
+if 'bitacora' not in st.session_state:
+    st.session_state.bitacora = []
+    
 from streamlit_gsheets import GSheetsConnection
 
 # Función para guardar en Google Sheets
