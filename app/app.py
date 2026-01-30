@@ -18,54 +18,54 @@ except ImportError:
     st.error("Librería 'st-gsheets-connection' no encontrada. Revisa requirements.txt")
 
 # 2. FUNCIÓN DE GUARDADO OPTIMIZADA
-def guardar_en_sheets(registro):
-    try:
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        # Intentar leer; si falla o está vacío, crear DF nuevo
-        try:
-            existing_data = conn.read(worksheet="Consultas")
-            if existing_data is not None:
-                existing_data = existing_data.dropna(how="all")
-        except:
-            existing_data = pd.DataFrame()
+# def guardar_en_sheets(registro):
+#     try:
+#         conn = st.connection("gsheets", type=GSheetsConnection)
+#         # Intentar leer; si falla o está vacío, crear DF nuevo
+#         try:
+#             existing_data = conn.read(worksheet="Consultas")
+#             if existing_data is not None:
+#                 existing_data = existing_data.dropna(how="all")
+#         except:
+#             existing_data = pd.DataFrame()
 
-        new_row = pd.DataFrame([registro])
+#         new_row = pd.DataFrame([registro])
         
-        if not existing_data.empty:
-            updated_df = pd.concat([existing_data, new_row], ignore_index=True)
-        else:
-            updated_df = new_row
+#         if not existing_data.empty:
+#             updated_df = pd.concat([existing_data, new_row], ignore_index=True)
+#         else:
+#             updated_df = new_row
             
-        conn.update(worksheet="Consultas", data=updated_df)
-        return True
-    except Exception as e:
-        # Cambia el 'print' por un 'st.error' para ver el problema real en pantalla
-        st.error(f"Error técnico real: {e}") 
-        return False
+#         conn.update(worksheet="Consultas", data=updated_df)
+#         return True
+#     except Exception as e:
+#         # Cambia el 'print' por un 'st.error' para ver el problema real en pantalla
+#         st.error(f"Error técnico real: {e}") 
+#         return False
 
-# 3. CONFIGURACIÓN DE ESTABILIDAD TF
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-import tensorflow as tf
+# # 3. CONFIGURACIÓN DE ESTABILIDAD TF
+# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+# os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+# import tensorflow as tf
 
-try:
-    tf.config.set_visible_devices([], 'GPU')
-    tf.config.threading.set_intra_op_parallelism_threads(1)
-    tf.config.threading.set_inter_op_parallelism_threads(1)
-except: pass
+# try:
+#     tf.config.set_visible_devices([], 'GPU')
+#     tf.config.threading.set_intra_op_parallelism_threads(1)
+#     tf.config.threading.set_inter_op_parallelism_threads(1)
+# except: pass
 
-# 4. CARGA DEL COMITÉ
-MODELS_DIR = 'models'
-model_names = ["m1_puro", "m2_volatilidad", "m3_tendencia", "m4_memoria", "m5_agresivo"]
-model_committee = []
+# # 4. CARGA DEL COMITÉ
+# MODELS_DIR = 'models'
+# model_names = ["m1_puro", "m2_volatilidad", "m3_tendencia", "m4_memoria", "m5_agresivo"]
+# model_committee = []
 
-for name in model_names:
-    path = os.path.join(MODELS_DIR, f"{name}.keras")
-    if os.path.exists(path):
-        try: 
-            model = tf.keras.models.load_model(path)
-            model_committee.append(model)
-        except: pass
+# for name in model_names:
+#     path = os.path.join(MODELS_DIR, f"{name}.keras")
+#     if os.path.exists(path):
+#         try: 
+#             model = tf.keras.models.load_model(path)
+#             model_committee.append(model)
+#         except: pass
 
 # 5. FUNCIONES DE DATOS
 def get_data(ticker, timeframe):
