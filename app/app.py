@@ -181,6 +181,7 @@ with tab2:
             with st.spinner(f"Simulando {test_days} decisiones..."):
                 try:
                     scaler = RobustScaler()
+                    # Nota: Para V6 mañana recuerda añadir 'ADX' aquí
                     features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI']
                     df_clean = df[features].ffill().bfill()
                     scaled = scaler.fit_transform(df_clean.values)
@@ -188,7 +189,7 @@ with tab2:
                     hits, dates, pips_step = [], [], []
 
                     for i in range(len(scaled) - test_days, len(scaled)):
-                        window = scaled[i-60:i].reshape(1, 60, 8)
+                        window = scaled[i-60:i].reshape(1, 60, len(features))
                         preds = [m.predict(window, verbose=0)[0][0] for m in model_committee]
                         avg_p_raw = np.mean(preds)
                         
@@ -197,31 +198,39 @@ with tab2:
                         
                         resultado = 1 if dir_pred == dir_real else 0
                         hits.append(resultado)
-                        dates.append(df.index[i])
                         
-                        # Cálculo de pips por paso
-                        cambio = abs(df['Close'].iloc[i] - df['Close'].iloc[i-1])
-                        pips_step.append(cambio if resultado == 1 else -cambio)
+                        # CÁLCULO DE PIPS REFINADO (Anclado al precio real)
+                        cambio_real = abs(df['Close'].iloc[i] - df['Close'].iloc[i-1])
+                        pips_step.append(cambio_real if resultado == 1 else -cambio_real)
 
-                    # 2. Lógica del Gráfico Espejo
+                    # 2. Lógica de Métricas y Gráfico
                     df_bt = df.iloc[len(df)-test_days:].copy()
                     pips_acum = np.cumsum(pips_step)
+                    win_rate = (sum(hits)/len(hits)) * 100
+                    total_pips = pips_acum[-1]
+
+                    # --- NUEVO PANEL DE MÉTRICAS VISUALES ---
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Efectividad (Win Rate)", f"{win_rate:.1f}%")
+                    m2.metric("Total Pips/Puntos", f"{total_pips:.2f}")
+                    m3.metric("Balance ✅ / ❌", f"{sum(hits)} / {len(hits)-sum(hits)}")
                     
+                    # 3. CONSTRUCCIÓN DEL GRÁFICO ESPEJO
                     fig_bt = make_subplots(
                         rows=2, cols=1, 
                         shared_xaxes=True, 
                         vertical_spacing=0.05,
-                        subplot_titles=("Análisis Forense de Velas", "Curva de Equidad (Pips/Puntos)"),
+                        subplot_titles=("Análisis Forense (Señales)", "Curva de Equidad Acumulada"),
                         row_heights=[0.7, 0.3]
                     )
 
-                    # Velas
+                    # Subplot 1: Velas
                     fig_bt.add_trace(go.Candlestick(
                         x=df_bt.index, open=df_bt['Open'], high=df_bt['High'],
                         low=df_bt['Low'], close=df_bt['Close'], name="Precio"
                     ), row=1, col=1)
 
-                    # Marcadores ✅/❌
+                    # Subplot 1: Marcadores ✅/❌
                     offset = (df_bt['High'] - df_bt['Low']).mean() * 0.8
                     fig_bt.add_trace(go.Scatter(
                         x=df_bt.index, 
@@ -235,7 +244,7 @@ with tab2:
                         name="Resultado"
                     ), row=1, col=1)
 
-                    # Curva de Pips
+                    # Subplot 2: Curva de Pips
                     fig_bt.add_trace(go.Scatter(
                         x=df_bt.index, y=pips_acum,
                         mode='lines', fill='tozeroy',
@@ -243,12 +252,8 @@ with tab2:
                         name="Rendimiento"
                     ), row=2, col=1)
 
-                    fig_bt.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=850, showlegend=False)
+                    fig_bt.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=800, showlegend=False)
                     st.plotly_chart(fig_bt, use_container_width=True)
-
-                    # Métricas rápidas
-                    accuracy = (sum(hits)/len(hits)) * 100
-                    st.success(f"Backtest completado. Efectividad: {accuracy:.2f}% | Total Pips: {pips_acum[-1]:.2f}")
 
                 except Exception as e:
                     st.error(f"Error en Backtest: {e}")
