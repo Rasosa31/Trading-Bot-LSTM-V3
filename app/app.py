@@ -203,18 +203,18 @@ with tab2:
                         cambio_real = abs(df['Close'].iloc[i] - df['Close'].iloc[i-1])
                         pips_step.append(cambio_real if resultado == 1 else -cambio_real)
 
-                   pips_step = []
-                    for i in range(len(hits)):
-                        idx_actual = len(df) - test_days + i
-                        # Calculamos la diferencia de precio real
-                        cambio_real = abs(df['Close'].iloc[i] - df['Close'].iloc[i-1])
+                        pips_step = []
+                        for i in range(len(hits)):
+                            idx_actual = len(df) - test_days + i
+                            # Calculamos la diferencia de precio real
+                            cambio_real = abs(df['Close'].iloc[i] - df['Close'].iloc[i-1])
                         
-                        # APLICAR MULTIPLICADOR SI ES FOREX
-                        # (Si el ticker tiene "=X", multiplicamos por 10,000 para ver pips reales)
-                        if "=X" in ticker_input:
-                            cambio_real = cambio_real * 10000
+                            # APLICAR MULTIPLICADOR SI ES FOREX
+                            # (Si el ticker tiene "=X", multiplicamos por 10,000 para ver pips reales)
+                            if "=X" in ticker_input:
+                                cambio_real = cambio_real * 10000
                         
-                        pips_step.append(cambio_real if hits[i] == 1 else -cambio_real)
+                            pips_step.append(cambio_real if hits[i] == 1 else -cambio_real)
 
                     # 2. Lógica de Métricas y Gráfico
                     df_bt = df.iloc[len(df)-test_days:].copy()
