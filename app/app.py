@@ -220,12 +220,12 @@ with tab2:
                     win_rate = (sum(hits)/len(hits)) * 100
                     total_pips = pips_acum[-1]
 
-                    # --- PANEL DE MÉTRICAS VISUALES ---
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("Efectividad", f"{win_rate:.1f}%")
-                    # Usamos f"{total_pips:+,.2f}" para que ponga el signo + y separe miles
-                    m2.metric("Pips/Puntos Totales", f"{total_pips:+,.2f}")
-                    m3.metric("Balance ✅ / ❌", f"{sum(hits)} / {len(hits)-sum(hits)}")
+                    # --- PANEL DE MÉTRICAS VISUALES REPETIDO ---
+                    # m1, m2, m3 = st.columns(3)
+                    # m1.metric("Efectividad", f"{win_rate:.1f}%")
+                    # # Usamos f"{total_pips:+,.2f}" para que ponga el signo + y separe miles
+                    # m2.metric("Pips/Puntos Totales", f"{total_pips:+,.2f}")
+                    # m3.metric("Balance ✅ / ❌", f"{sum(hits)} / {len(hits)-sum(hits)}")
 
                     # --- NUEVO PANEL DE MÉTRICAS VISUALES ---
                     m1, m2, m3 = st.columns(3)
