@@ -7,6 +7,7 @@ from sklearn.preprocessing import RobustScaler
 import os
 from datetime import datetime
 from plotly.subplots import make_subplots
+import pandas_ta as ta
 
 # 1. INICIALIZACIÓN DE SESIÓN (DEBE IR PRIMERO QUE NADA)
 if 'bitacora' not in st.session_state:
@@ -56,7 +57,7 @@ try:
 except: pass
 
 # 4. CARGA DEL COMITÉ
-MODELS_DIR = 'models'
+MODELS_DIR = 'models_v6'
 model_names = ["m1_puro", "m2_volatilidad", "m3_tendencia", "m4_memoria", "m5_agresivo"]
 model_committee = []
 
@@ -84,13 +85,15 @@ def get_data(ticker, timeframe):
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        df['ADX'] = ta.adx(df['High'], df['Low'], df['Close'], length=14)['ADX_14']
+        df.dropna(inplace=True)
         df['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-9))))
         return df.bfill().ffill()
     except: return pd.DataFrame()
 
 # 6. INTERFAZ
-st.set_page_config(page_title="StockAI V5 Pro", layout="wide")
-tab1, tab2 = st.tabs(["📈 Análisis en Vivo", "🧪 Backtesting V5"])
+st.set_page_config(page_title="StockAI V6 Pro", layout="wide")
+tab1, tab2 = st.tabs(["📈 Análisis en Vivo", "🧪 Backtesting V6"])
 
 with st.sidebar:
     st.header("Configuración")
@@ -182,7 +185,7 @@ with tab2:
                 try:
                     scaler = RobustScaler()
                     # Nota: Para V6 mañana recuerda añadir 'ADX' aquí
-                    features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI']
+                    features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI', 'ADX']
                     df_clean = df[features].ffill().bfill()
                     scaled = scaler.fit_transform(df_clean.values)
                     

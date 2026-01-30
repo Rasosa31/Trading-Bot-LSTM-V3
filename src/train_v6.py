@@ -18,9 +18,22 @@ def preparar_datos_v6(ticker):
     print(f"📥 Descargando datos para {ticker}...")
     df = yf.download(ticker, period="5y", interval="1d")
     
-    # Cálculos Técnicos
+    # 1. LIMPIEZA DE COLUMNAS (Para evitar el error de MultiIndex)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    
+    # 2. CÁLCULO DE INDICADORES
+    # Usamos la interfaz simple de pandas_ta
     adx_df = ta.adx(df['High'], df['Low'], df['Close'], length=14)
-    df['ADX'] = adx_df['ADX_14']
+    
+    # Verificación de seguridad
+    if adx_df is not None:
+        df['ADX'] = adx_df['ADX_14']
+    else:
+        # Si falla el cálculo, lo hacemos de forma manual o forzada
+        print("⚠️ Advertencia: Falló cálculo automático de ADX. Reintentando...")
+        df.ta.adx(append=True) 
+
     df['RSI'] = ta.rsi(df['Close'], length=14)
     df['SMA_100'] = df['Close'].rolling(window=100).mean()
     df['SMA_200'] = df['Close'].rolling(window=200).mean()
