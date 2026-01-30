@@ -6,16 +6,17 @@ import plotly.graph_objects as go
 from sklearn.preprocessing import RobustScaler
 import os
 from datetime import datetime
+from plotly.subplots import make_subplots
 
 # 1. INICIALIZACIÓN DE SESIÓN (DEBE IR PRIMERO QUE NADA)
 if 'bitacora' not in st.session_state:
     st.session_state.bitacora = []
 
 # Importación diferida para estabilidad
-try:
-    from streamlit_gsheets import GSheetsConnection
-except ImportError:
-    st.error("Librería 'st-gsheets-connection' no encontrada. Revisa requirements.txt")
+# try:
+#     from streamlit_gsheets import GSheetsConnection
+# except ImportError:
+#     st.error("Librería 'st-gsheets-connection' no encontrada. Revisa requirements.txt")
 
 # 2. FUNCIÓN DE GUARDADO OPTIMIZADA
 # def guardar_en_sheets(registro):
@@ -167,12 +168,87 @@ with tab1:
             st.info("Sin consultas en esta sesión.")
 
 # --- TAB 2: BACKTESTING ---
+# --- SUSTITUIR EN EL TAB 2 (BACKTESTING) ---
 with tab2:
-    if not df.empty and len(df) > 65:
-        max_test = min(200, len(df)-62)
-        test_days = st.number_input("Días de prueba:", 5, max_test, 30)
+    st.header("🧪 Evaluación de Desempeño Adaptativa")
+    if df.empty or len(df) < 65:
+        st.error(f"⚠️ Datos insuficientes. Se requieren al menos 65 velas.")
+    else:
+        max_posible = len(df) - 62
+        test_days = st.number_input("Velas de prueba:", 5, min(200, max_posible), min(30, max_posible))
         
-        if st.button("📊 Ejecutar Backtest"):
-            # (El código de tu backtest estaba bien, lo mantengo simplificado para brevedad)
-            st.info("Simulando estrategia...")
-            # ... resto de tu lógica de backtest ...
+        if st.button("📊 Iniciar Backtest Profesional"):
+            with st.spinner(f"Simulando {test_days} decisiones..."):
+                try:
+                    scaler = RobustScaler()
+                    features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI']
+                    df_clean = df[features].ffill().bfill()
+                    scaled = scaler.fit_transform(df_clean.values)
+                    
+                    hits, dates, pips_step = [], [], []
+
+                    for i in range(len(scaled) - test_days, len(scaled)):
+                        window = scaled[i-60:i].reshape(1, 60, 8)
+                        preds = [m.predict(window, verbose=0)[0][0] for m in model_committee]
+                        avg_p_raw = np.mean(preds)
+                        
+                        dir_pred = 1 if avg_p_raw > scaled[i-1, 3] else -1
+                        dir_real = 1 if scaled[i, 3] > scaled[i-1, 3] else -1
+                        
+                        resultado = 1 if dir_pred == dir_real else 0
+                        hits.append(resultado)
+                        dates.append(df.index[i])
+                        
+                        # Cálculo de pips por paso
+                        cambio = abs(df['Close'].iloc[i] - df['Close'].iloc[i-1])
+                        pips_step.append(cambio if resultado == 1 else -cambio)
+
+                    # 2. Lógica del Gráfico Espejo
+                    df_bt = df.iloc[len(df)-test_days:].copy()
+                    pips_acum = np.cumsum(pips_step)
+                    
+                    fig_bt = make_subplots(
+                        rows=2, cols=1, 
+                        shared_xaxes=True, 
+                        vertical_spacing=0.05,
+                        subplot_titles=("Análisis Forense de Velas", "Curva de Equidad (Pips/Puntos)"),
+                        row_heights=[0.7, 0.3]
+                    )
+
+                    # Velas
+                    fig_bt.add_trace(go.Candlestick(
+                        x=df_bt.index, open=df_bt['Open'], high=df_bt['High'],
+                        low=df_bt['Low'], close=df_bt['Close'], name="Precio"
+                    ), row=1, col=1)
+
+                    # Marcadores ✅/❌
+                    offset = (df_bt['High'] - df_bt['Low']).mean() * 0.8
+                    fig_bt.add_trace(go.Scatter(
+                        x=df_bt.index, 
+                        y=[row['High'] + offset if hits[i] == 1 else row['Low'] - offset for i, (idx, row) in enumerate(df_bt.iterrows())],
+                        mode='markers',
+                        marker=dict(
+                            symbol=['triangle-up' if h == 1 else 'x' for h in hits],
+                            color=['#00ff00' if h == 1 else '#ff4b4b' for h in hits],
+                            size=12
+                        ),
+                        name="Resultado"
+                    ), row=1, col=1)
+
+                    # Curva de Pips
+                    fig_bt.add_trace(go.Scatter(
+                        x=df_bt.index, y=pips_acum,
+                        mode='lines', fill='tozeroy',
+                        line=dict(color='#00ccff', width=3),
+                        name="Rendimiento"
+                    ), row=2, col=1)
+
+                    fig_bt.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=850, showlegend=False)
+                    st.plotly_chart(fig_bt, use_container_width=True)
+
+                    # Métricas rápidas
+                    accuracy = (sum(hits)/len(hits)) * 100
+                    st.success(f"Backtest completado. Efectividad: {accuracy:.2f}% | Total Pips: {pips_acum[-1]:.2f}")
+
+                except Exception as e:
+                    st.error(f"Error en Backtest: {e}")
