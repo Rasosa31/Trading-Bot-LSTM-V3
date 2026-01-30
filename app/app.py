@@ -200,9 +200,7 @@ with tab2:
                         hits.append(resultado)
                         
                         # CÁLCULO DE PIPS REFINADO (Anclado al precio real)
-                        cambio_real = abs(df['Close'].iloc[i] - df['Close'].iloc[i-1])
-                        pips_step.append(cambio_real if resultado == 1 else -cambio_real)
-
+                        
                         pips_step = []
                         for i in range(len(hits)):
                             idx_actual = len(df) - test_days + i
