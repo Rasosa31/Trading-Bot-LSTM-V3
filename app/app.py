@@ -203,11 +203,31 @@ with tab2:
                         cambio_real = abs(df['Close'].iloc[i] - df['Close'].iloc[i-1])
                         pips_step.append(cambio_real if resultado == 1 else -cambio_real)
 
+                   pips_step = []
+                    for i in range(len(hits)):
+                        idx_actual = len(df) - test_days + i
+                        # Calculamos la diferencia de precio real
+                        cambio_real = abs(df['Close'].iloc[i] - df['Close'].iloc[i-1])
+                        
+                        # APLICAR MULTIPLICADOR SI ES FOREX
+                        # (Si el ticker tiene "=X", multiplicamos por 10,000 para ver pips reales)
+                        if "=X" in ticker_input:
+                            cambio_real = cambio_real * 10000
+                        
+                        pips_step.append(cambio_real if hits[i] == 1 else -cambio_real)
+
                     # 2. Lógica de Métricas y Gráfico
                     df_bt = df.iloc[len(df)-test_days:].copy()
                     pips_acum = np.cumsum(pips_step)
                     win_rate = (sum(hits)/len(hits)) * 100
                     total_pips = pips_acum[-1]
+
+                    # --- PANEL DE MÉTRICAS VISUALES ---
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Efectividad", f"{win_rate:.1f}%")
+                    # Usamos f"{total_pips:+,.2f}" para que ponga el signo + y separe miles
+                    m2.metric("Pips/Puntos Totales", f"{total_pips:+,.2f}")
+                    m3.metric("Balance ✅ / ❌", f"{sum(hits)} / {len(hits)-sum(hits)}")
 
                     # --- NUEVO PANEL DE MÉTRICAS VISUALES ---
                     m1, m2, m3 = st.columns(3)
