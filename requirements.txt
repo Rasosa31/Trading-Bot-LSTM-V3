@@ -7,3 +7,4 @@ scikit-learn
 tensorflow
 st-gsheets-connection
 gspread
+pandas_ta
