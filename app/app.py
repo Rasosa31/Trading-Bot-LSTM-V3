@@ -211,7 +211,7 @@ with tab2:
                         
                             # APLICAR MULTIPLICADOR SI ES FOREX
                             # (Si el ticker tiene "=X", multiplicamos por 10,000 para ver pips reales)
-                            if "=X" in ticker_input:
+                            if "=X" in ticker:
                                 cambio_real = cambio_real * 10000
                         
                             pips_step.append(cambio_real if hits[i] == 1 else -cambio_real)
