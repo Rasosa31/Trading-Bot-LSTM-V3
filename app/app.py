@@ -9,9 +9,9 @@ from datetime import datetime
 from plotly.subplots import make_subplots
 import pandas_ta as ta
 
-# 1. INICIALIZACIÓN DE SESIÓN
-if 'bitacora' not in st.session_state:
-    st.session_state.bitacora = []
+# 1. INICIALIZACIÓN DE SESIÓN (BITÁCORAS CORTAS)
+if 'bitacora_individual' not in st.session_state:
+    st.session_state.bitacora_individual = []
 
 # 2. CONFIGURACIÓN DE ESTABILIDAD TF
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -48,7 +48,6 @@ def get_data(ticker, timeframe):
         df.columns = [str(col).strip() for col in df.columns]
         if df.empty or len(df) < 10: return pd.DataFrame()
         
-        # Indicadores V6
         df['SMA_100'] = df['Close'].rolling(window=100).mean()
         df['SMA_200'] = df['Close'].rolling(window=200).mean()
         df['RSI'] = ta.rsi(df['Close'], length=14)
@@ -60,20 +59,17 @@ def get_data(ticker, timeframe):
         return df.bfill().ffill()
     except: return pd.DataFrame()
 
-# 5. INTERFAZ MAESTRA
-st.set_page_config(page_title="StockAI V6 Ultra", layout="wide")
-st.title("🤖 StockAI Committee V6")
+# 5. INTERFAZ
+st.set_page_config(page_title="StockAI V6 Ultra Pro", layout="wide")
+st.title("🤖 StockAI Committee V6 - Intelligence Terminal")
 
 tab1, tab2, tab3 = st.tabs(["📈 Análisis Individual", "🧪 Backtesting Pro", "🚀 Escaneo Maestro"])
 
-# --- SIDEBAR COMÚN ---
 with st.sidebar:
-    st.header("⚙️ Configuración Global")
+    st.header("⚙️ Configuración")
     ticker_main = st.text_input("Símbolo Principal:", value="NQ=F").upper()
-    tf_main = st.selectbox("Temporalidad Base:", ["Daily", "Weekly", "Monthly"])
-    fuerza_global = st.slider("Sensibilidad (Fuerza):", 0.1, 1.0, 0.4)
-    st.divider()
-    st.caption("V6: LSTM Ensemble + ADX Filter")
+    tf_main = st.selectbox("Temporalidad:", ["Daily", "Weekly", "Monthly"])
+    fuerza_global = st.slider("Sensibilidad:", 0.1, 1.0, 0.4)
 
 df = get_data(ticker_main, tf_main)
 
@@ -82,32 +78,44 @@ with tab1:
     if not df.empty:
         df_f = df.tail(150)
         curr_p = float(df['Close'].iloc[-1])
-        
-        fig = go.Figure(data=[go.Candlestick(
-            x=df_f.index, open=df_f['Open'], high=df_f['High'], 
-            low=df_f['Low'], close=df_f['Close'], name=ticker_main
-        )])
-        fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=450)
+        fig = go.Figure(data=[go.Candlestick(x=df_f.index, open=df_f['Open'], high=df_f['High'], low=df_f['Low'], close=df_f['Close'], name=ticker_main)])
+        fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=400)
         st.plotly_chart(fig, use_container_width=True)
 
         if st.button("🚀 Consultar Comité"):
             scaler = RobustScaler()
             features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI', 'ADX']
             scaled_data = scaler.fit_transform(df[features].values)
+            last_window = scaled_data[-60:].reshape(1, 60, len(features))
+            preds_raw = [m.predict(last_window, verbose=0)[0][0] for m in model_committee]
             
-            if len(scaled_data) >= 60:
-                last_window = scaled_data[-60:].reshape(1, 60, len(features))
-                preds_raw = [m.predict(last_window, verbose=0)[0][0] for m in model_committee]
-                
-                vol = df['Close'].pct_change().std()
-                z_score = (np.mean(preds_raw) - np.mean(scaled_data[:, 3])) / (np.std(scaled_data[:, 3]) + 1e-9)
-                pred_final = curr_p * (1 + (z_score * vol * fuerza_global))
-                acuerdo_val = max(0, 100-(np.std(preds_raw)*1000))
-                
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Precio Actual", f"{curr_p:.2f}")
-                m2.metric("Target", f"{pred_final:.2f}", f"{pred_final-curr_p:+.2f}")
-                m3.metric("Confianza", f"{acuerdo_val:.1f}%")
+            vol = df['Close'].pct_change().std()
+            z_score = (np.mean(preds_raw) - np.mean(scaled_data[:, 3])) / (np.std(scaled_data[:, 3]) + 1e-9)
+            pred_final = curr_p * (1 + (z_score * vol * fuerza_global))
+            acuerdo_val = max(0, 100-(np.std(preds_raw)*1000))
+            
+            registro = {
+                "Fecha Consulta": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "Activo": ticker_main,
+                "Temporalidad": tf_main,
+                "Precio Cierre": round(curr_p, 4),
+                "Predicción": round(pred_final, 4),
+                "Dirección": "⬆️ ALZA" if pred_final > curr_p else "⬇️ BAJA",
+                "Acuerdo %": f"{acuerdo_val:.1f}%"
+            }
+            st.session_state.bitacora_individual.append(registro)
+            
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Precio Actual", f"{curr_p:.2f}")
+            m2.metric("Target", f"{pred_final:.2f}", f"{pred_final-curr_p:+.2f}")
+            m3.metric("Confianza", f"{acuerdo_val:.1f}%")
+
+        if st.session_state.bitacora_individual:
+            st.divider()
+            st.subheader("📋 Consultas Recientes")
+            df_individual = pd.DataFrame(st.session_state.bitacora_individual)
+            st.dataframe(df_individual, use_container_width=True)
+            st.download_button("📥 Descargar Consultas (CSV)", df_individual.to_csv(index=False), "consultas_individuales.csv", "text/csv")
 
 # --- TAB 2: BACKTESTING ---
 with tab2:
@@ -118,38 +126,39 @@ with tab2:
             features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI', 'ADX']
             scaled = scaler.fit_transform(df[features].values)
             
-            hits, pips_step = [], []
+            hits, bt_log = [], []
             df_precios = df['Close'].iloc[-test_days:].values
             df_precios_prev = df['Close'].iloc[-test_days-1:-1].values
             
             for i in range(len(scaled) - test_days, len(scaled)):
                 window = scaled[i-60:i].reshape(1, 60, len(features))
                 preds = [m.predict(window, verbose=0)[0][0] for m in model_committee]
-                res = 1 if (np.mean(preds) > scaled[i-1, 3]) == (scaled[i, 3] > scaled[i-1, 3]) else 0
-                hits.append(res)
-            
-            for i in range(len(hits)):
-                cambio = abs(df_precios[i] - df_precios_prev[i])
-                if "=X" in ticker_main: cambio *= 10000
-                pips_step.append(cambio if hits[i] == 1 else -cambio)
+                pred_dir = 1 if (np.mean(preds) > scaled[i-1, 3]) else -1
+                real_dir = 1 if (scaled[i, 3] > scaled[i-1, 3]) else -1
+                hit = 1 if pred_dir == real_dir else 0
+                hits.append(hit)
+                
+                bt_log.append({
+                    "Fecha": df.index[i].strftime("%Y-%m-%d"),
+                    "Activo": ticker_main,
+                    "Dirección Pred": "ALZA" if pred_dir == 1 else "BAJA",
+                    "Dirección Real": "ALZA" if real_dir == 1 else "BAJA",
+                    "Resultado": "✅" if hit == 1 else "❌"
+                })
 
-            pips_acum = np.cumsum(pips_step)
-            
-            fig_bt = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
-            fig_bt.add_trace(go.Candlestick(x=df.index[-test_days:], open=df['Open'].iloc[-test_days:], high=df['High'].iloc[-test_days:], low=df['Low'].iloc[-test_days:], close=df['Close'].iloc[-test_days:]), row=1, col=1)
-            fig_bt.add_trace(go.Scatter(x=df.index[-test_days:], y=pips_acum, mode='lines', fill='tozeroy', line=dict(color='#00ccff')), row=2, col=1)
-            fig_bt.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=600, showlegend=False)
-            fig_bt.update_yaxes(autorange=True, row=2, col=1)
-            st.plotly_chart(fig_bt, use_container_width=True)
+            df_bt_results = pd.DataFrame(bt_log)
+            st.success(f"Backtest completado. Efectividad: {(sum(hits)/len(hits))*100:.1f}%")
+            st.dataframe(df_bt_results, use_container_width=True)
+            st.download_button("📥 Descargar Reporte Backtesting", df_bt_results.to_csv(index=False), f"backtest_{ticker_main}.csv", "text/csv")
 
-# --- TAB 3: ESCANEO MAESTRO (EL NUEVO PODER) ---
+# --- TAB 3: ESCANEO MAESTRO ---
 with tab3:
-    st.subheader("🚀 Escaneo Multiactivo de Alta Velocidad")
-    lista_raw = st.text_area("Lista (Tickers separados por espacio o coma):", value="AAPL, NVDA, BTC-USD, GC=F, NQ=F, EURUSD=X, SPY, TSLA", height=100)
+    st.subheader("🚀 Escaneo Multiactivo")
+    lista_raw = st.text_area("Tickers (ej: AAPL, NVDA, BTC-USD):", value="AAPL, NVDA, BTC-USD, GC=F, NQ=F, EURUSD=X", height=100)
     
     if st.button("🔍 Iniciar Escaneo"):
         tickers = [t.strip().replace(",", "").upper() for t in lista_raw.replace("\n", " ").split() if t.strip()]
-        resultados = []
+        resultados_escaneo = []
         progreso = st.progress(0)
         
         for idx, t in enumerate(tickers):
@@ -167,14 +176,19 @@ with tab3:
                 pf = cp * (1 + (zs * vol * fuerza_global))
                 ac = max(0, 100 - (np.std(preds) * 1000))
                 
-                resultados.append({
-                    "Activo": t, "Precio": f"{cp:.2f}", "Target": f"{pf:.2f}",
-                    "Potencial %": round(((pf/cp)-1)*100, 2),
-                    "Señal": "🚀 COMPRA" if pf > cp else "📉 VENTA",
-                    "Confianza": f"{ac:.1f}%"
+                resultados_escaneo.append({
+                    "Fecha Consulta": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "Activo": t,
+                    "Temporalidad": tf_main,
+                    "Precio Cierre": round(cp, 4),
+                    "Predicción": round(pf, 4),
+                    "Dirección": "🚀 COMPRA" if pf > cp else "📉 VENTA",
+                    "Acuerdo %": f"{ac:.1f}%"
                 })
             progreso.progress((idx + 1) / len(tickers))
         
-        if resultados:
-            df_res = pd.DataFrame(resultados).sort_values(by="Confianza", ascending=False)
-            st.table(df_res) # Usamos table para una vista rápida y limpia
+        if resultados_escaneo:
+            df_res = pd.DataFrame(resultados_escaneo).sort_values(by="Acuerdo %", ascending=False)
+            st.subheader("📊 Resultados del Escaneo")
+            st.dataframe(df_res, use_container_width=True)
+            st.download_button("📥 Descargar Escaneo Maestro", df_res.to_csv(index=False), f"escaneo_maestro_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
