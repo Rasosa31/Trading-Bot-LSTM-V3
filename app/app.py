@@ -13,17 +13,16 @@ import pandas_ta as ta
 if 'bitacora' not in st.session_state:
     st.session_state.bitacora = []
 
-#Importación diferida para estabilidad
+# Importación diferida para estabilidad
 try:
     from streamlit_gsheets import GSheetsConnection
 except ImportError:
     st.error("Librería 'st-gsheets-connection' no encontrada. Revisa requirements.txt")
 
-#2. FUNCIÓN DE GUARDADO OPTIMIZADA
+# 2. FUNCIÓN DE GUARDADO OPTIMIZADA
 def guardar_en_sheets(registro):
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
-        # Intentar leer; si falla o está vacío, crear DF nuevo
         try:
             existing_data = conn.read(worksheet="Consultas")
             if existing_data is not None:
@@ -41,7 +40,6 @@ def guardar_en_sheets(registro):
         conn.update(worksheet="Consultas", data=updated_df)
         return True
     except Exception as e:
-        # Cambia el 'print' por un 'st.error' para ver el problema real en pantalla
         st.error(f"Error técnico real: {e}") 
         return False
 
@@ -56,7 +54,7 @@ try:
     tf.config.threading.set_inter_op_parallelism_threads(1)
 except: pass
 
-# 4. CARGA DEL COMITÉ
+# 4. CARGA DEL COMITÉ (V6)
 MODELS_DIR = 'models_v6'
 model_names = ["m1_puro", "m2_volatilidad", "m3_tendencia", "m4_memoria", "m5_agresivo"]
 model_committee = []
@@ -80,14 +78,17 @@ def get_data(ticker, timeframe):
         df.columns = [str(col).strip() for col in df.columns]
         if df.empty or len(df) < 10: return pd.DataFrame()
         
-        df['SMA_100'] = df['Close'].rolling(window=min(100, len(df)//2)).mean()
-        df['SMA_200'] = df['Close'].rolling(window=min(200, len(df)//2)).mean()
-        delta = df['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        df['ADX'] = ta.adx(df['High'], df['Low'], df['Close'], length=14)['ADX_14']
+        # Cálculo de Indicadores
+        df['SMA_100'] = df['Close'].rolling(window=100).mean()
+        df['SMA_200'] = df['Close'].rolling(window=200).mean()
+        df['RSI'] = ta.rsi(df['Close'], length=14)
+        
+        # Cálculo Seguro de ADX
+        adx_data = ta.adx(df['High'], df['Low'], df['Close'], length=14)
+        if adx_data is not None:
+            df['ADX'] = adx_data['ADX_14']
+        
         df.dropna(inplace=True)
-        df['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-9))))
         return df.bfill().ffill()
     except: return pd.DataFrame()
 
@@ -123,57 +124,50 @@ with tab1:
         if st.button("🚀 Consultar Comité de Expertos"):
             with st.spinner("Los expertos están deliberando..."):
                 scaler = RobustScaler()
-                features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI']
-                df_clean = df[features].ffill().bfill()
-                scaled = scaler.fit_transform(df_clean.values)
+                features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI', 'ADX']
                 
-                input_data = scaled[-60:] if len(scaled) >= 60 else np.vstack([np.zeros((60-len(scaled), 8)), scaled])
-                last_window = input_data.reshape(1, 60, 8)
+                # Preparamos los datos escalados (los 9 features)
+                scaled_data = scaler.fit_transform(df[features].values)
                 
-                preds_raw = [m.predict(last_window, verbose=0)[0][0] for m in model_committee]
-                mean_c, std_c = np.mean(scaled[:, 3]), np.std(scaled[:, 3])
-                vol = df['Close'].pct_change().std()
-                z_score = (np.mean(preds_raw) - mean_c) / (std_c + 1e-9)
-                pred_final = curr_p * (1 + (z_score * vol * fuerza))
-                
-                st.divider()
-                m1, m2, m3 = st.columns(3)
-                m1.metric("Precio Actual", f"{curr_p:{formato}}")
-                m2.metric("Target Comité", f"{pred_final:{formato}}", f"{pred_final-curr_p:+.{precision}f}")
-                acuerdo_val = max(0, 100-(np.std(preds_raw)*1000))
-                m3.metric("Acuerdo", f"{acuerdo_val:.1f}%")
+                if len(scaled_data) >= 60:
+                    last_window = scaled_data[-60:].reshape(1, 60, len(features))
+                    preds_raw = [m.predict(last_window, verbose=0)[0][0] for m in model_committee]
+                    
+                    mean_c, std_c = np.mean(scaled_data[:, 3]), np.std(scaled_data[:, 3])
+                    vol = df['Close'].pct_change().std()
+                    z_score = (np.mean(preds_raw) - mean_c) / (std_c + 1e-9)
+                    pred_final = curr_p * (1 + (z_score * vol * fuerza))
+                    
+                    st.divider()
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Precio Actual", f"{curr_p:{formato}}")
+                    m2.metric("Target Comité", f"{pred_final:{formato}}", f"{pred_final-curr_p:+.{precision}f}")
+                    acuerdo_val = max(0, 100-(np.std(preds_raw)*1000))
+                    m3.metric("Acuerdo", f"{acuerdo_val:.1f}%")
 
-                registro = {
-                    "Fecha Consulta": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "Activo": ticker,
-                    "Temporalidad": tf_choice,
-                    "Precio Cierre": f"{curr_p:{formato}}",
-                    "Predicción": f"{pred_final:{formato}}",
-                    "Dirección": "⬆️ ALZA" if pred_final > curr_p else "⬇️ BAJA",
-                    "Acuerdo %": f"{acuerdo_val:.1f}%"
-                }
-                
-                # Intentar guardado en nube
-                # if guardar_en_sheets(registro):
-                #     st.success("✅ Registro exitoso en Google Sheets")
-                
-                # Guardado en sesión local (con protección)
-                st.session_state.bitacora.append(registro)
+                    registro = {
+                        "Fecha Consulta": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "Activo": ticker,
+                        "Temporalidad": tf_choice,
+                        "Precio Cierre": f"{curr_p:{formato}}",
+                        "Predicción": f"{pred_final:{formato}}",
+                        "Dirección": "⬆️ ALZA" if pred_final > curr_p else "⬇️ BAJA",
+                        "Acuerdo %": f"{acuerdo_val:.1f}%"
+                    }
+                    st.session_state.bitacora.append(registro)
+                else:
+                    st.warning("No hay suficientes datos para una ventana de 60 velas.")
 
-        # SECCIÓN DE BITÁCORA SEGURA
         st.subheader("📋 Bitácora de Consultas")
         if len(st.session_state.bitacora) > 0:
             log_df = pd.DataFrame(st.session_state.bitacora)
             st.dataframe(log_df, use_container_width=True)
             csv_log = log_df.to_csv(index=False).encode('utf-8')
             st.download_button("📥 Descargar CSV", csv_log, "trading_log.csv", "text/csv")
-        else:
-            st.info("Sin consultas en esta sesión.")
 
 # --- TAB 2: BACKTESTING ---
-# --- SUSTITUIR EN EL TAB 2 (BACKTESTING) ---
 with tab2:
-    st.header("🧪 Evaluación de Desempeño Adaptativa")
+    st.header("🧪 Evaluación de Desempeño V6")
     if df.empty or len(df) < 65:
         st.error(f"⚠️ Datos insuficientes. Se requieren al menos 65 velas.")
     else:
@@ -184,13 +178,11 @@ with tab2:
             with st.spinner(f"Simulando {test_days} decisiones..."):
                 try:
                     scaler = RobustScaler()
-                    # Nota: Para V6 mañana recuerda añadir 'ADX' aquí
                     features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI', 'ADX']
-                    df_clean = df[features].ffill().bfill()
-                    scaled = scaler.fit_transform(df_clean.values)
+                    scaled = scaler.fit_transform(df[features].values)
                     
-                    hits, dates, pips_step = [], [], []
-
+                    hits = []
+                    # Primero obtenemos los aciertos/fallos
                     for i in range(len(scaled) - test_days, len(scaled)):
                         window = scaled[i-60:i].reshape(1, 60, len(features))
                         preds = [m.predict(window, verbose=0)[0][0] for m in model_committee]
@@ -198,71 +190,41 @@ with tab2:
                         
                         dir_pred = 1 if avg_p_raw > scaled[i-1, 3] else -1
                         dir_real = 1 if scaled[i, 3] > scaled[i-1, 3] else -1
-                        
-                        resultado = 1 if dir_pred == dir_real else 0
-                        hits.append(resultado)
-                        
-                        # CÁLCULO DE PIPS REFINADO (Anclado al precio real)
-                        
-                        pips_step = []
-                        for i in range(len(hits)):
-                            idx_actual = len(df) - test_days + i
-                            # Calculamos la diferencia de precio real
-                            cambio_real = abs(df['Close'].iloc[i] - df['Close'].iloc[i-1])
-                        
-                            # APLICAR MULTIPLICADOR SI ES FOREX
-                            # (Si el ticker tiene "=X", multiplicamos por 10,000 para ver pips reales)
-                            if "=X" in ticker:
-                                cambio_real = cambio_real * 10000
-                        
-                            pips_step.append(cambio_real if hits[i] == 1 else -cambio_real)
+                        hits.append(1 if dir_pred == dir_real else 0)
+                    
+                    # Luego calculamos pips acumulados correctamente
+                    pips_step = []
+                    df_precios = df['Close'].iloc[-test_days:].values
+                    df_precios_prev = df['Close'].iloc[-test_days-1:-1].values
+                    
+                    for i in range(len(hits)):
+                        cambio_real = abs(df_precios[i] - df_precios_prev[i])
+                        if "=X" in ticker:
+                            cambio_real *= 10000
+                        pips_step.append(cambio_real if hits[i] == 1 else -cambio_real)
 
-                    # 2. Lógica de Métricas y Gráfico
-                    df_bt = df.iloc[len(df)-test_days:].copy()
                     pips_acum = np.cumsum(pips_step)
                     win_rate = (sum(hits)/len(hits)) * 100
                     total_pips = pips_acum[-1]
 
-                    # --- PANEL DE MÉTRICAS VISUALES REPETIDO ---
-                    # m1, m2, m3 = st.columns(3)
-                    # m1.metric("Efectividad", f"{win_rate:.1f}%")
-                    # # Usamos f"{total_pips:+,.2f}" para que ponga el signo + y separe miles
-                    # m2.metric("Pips/Puntos Totales", f"{total_pips:+,.2f}")
-                    # m3.metric("Balance ✅ / ❌", f"{sum(hits)} / {len(hits)-sum(hits)}")
-
-                    # --- NUEVO PANEL DE MÉTRICAS VISUALES ---
+                    # Panel de Métricas
                     m1, m2, m3 = st.columns(3)
-                    m1.metric("Efectividad (Win Rate)", f"{win_rate:.1f}%")
-                    m2.metric("Total Pips/Puntos", f"{total_pips:.2f}")
+                    m1.metric("Efectividad", f"{win_rate:.1f}%")
+                    m2.metric("Total Pips/Puntos", f"{total_pips:+,.2f}")
                     m3.metric("Balance ✅ / ❌", f"{sum(hits)} / {len(hits)-sum(hits)}")
                     
-                    # 3. CONSTRUCCIÓN DEL GRÁFICO ESPEJO
+                    # Gráfico Espejo
+                    df_bt = df.iloc[-test_days:].copy()
                     fig_bt = make_subplots(
-                        rows=2, cols=1, 
-                        shared_xaxes=True, 
+                        rows=2, cols=1, shared_xaxes=True, 
                         vertical_spacing=0.05,
                         subplot_titles=("Análisis Forense (Señales)", "Curva de Equidad Acumulada"),
                         row_heights=[0.7, 0.3]
                     )
 
-                    # Subplot 1: Velas
                     fig_bt.add_trace(go.Candlestick(
                         x=df_bt.index, open=df_bt['Open'], high=df_bt['High'],
                         low=df_bt['Low'], close=df_bt['Close'], name="Precio"
-                    ), row=1, col=1)
-
-                    # Subplot 1: Marcadores ✅/❌
-                    offset = (df_bt['High'] - df_bt['Low']).mean() * 0.8
-                    fig_bt.add_trace(go.Scatter(
-                        x=df_bt.index, 
-                        y=[row['High'] + offset if hits[i] == 1 else row['Low'] - offset for i, (idx, row) in enumerate(df_bt.iterrows())],
-                        mode='markers',
-                        marker=dict(
-                            symbol=['triangle-up' if h == 1 else 'x' for h in hits],
-                            color=['#00ff00' if h == 1 else '#ff4b4b' for h in hits],
-                            size=12
-                        ),
-                        name="Resultado"
                     ), row=1, col=1)
 
                     # Subplot 2: Curva de Pips
@@ -272,6 +234,15 @@ with tab2:
                         line=dict(color='#00ccff', width=3),
                         name="Rendimiento"
                     ), row=2, col=1)
+
+                    # Ajustes de Ejes (AQUÍ ESTÁ LO QUE ME PEDISTE)
+                    fig_bt.update_yaxes(title_text="Precio", row=1, col=1)
+                    fig_bt.update_yaxes(
+                        title_text="Pips/Puntos Acum.", 
+                        row=2, col=1, 
+                        autorange=True, 
+                        fixedrange=False
+                    )
 
                     fig_bt.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=800, showlegend=False)
                     st.plotly_chart(fig_bt, use_container_width=True)
