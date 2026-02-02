@@ -39,7 +39,7 @@ for name in model_names:
 
 # 4. FUNCIONES DE DATOS
 def get_data(ticker, timeframe):
-    period_map = {"Daily": "5y", "Weekly": "max", "Monthly": "max"}
+    period_map = {"Daily": "10y", "Weekly": "max", "Monthly": "max"}
     interval_map = {"Daily": "1d", "Weekly": "1wk", "Monthly": "1mo"}
     try:
         df = yf.download(ticker, period=period_map[timeframe], interval=interval_map[timeframe], progress=False)
