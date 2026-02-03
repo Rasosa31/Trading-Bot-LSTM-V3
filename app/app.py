@@ -197,10 +197,11 @@ with tab3:
                 
                 if ac_raw >= umbral_min:
                     resultados_escaneo.append({
-                        "Fecha Consulta": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "Fecha": datetime.now().strftime("%H:%M"),
                         "Activo": t,
-                        "Precio Cierre": round(cp, 4),
-                        "Predicción": round(pf, 4),
+                        "TF": tf_main, # <--- ESTA ES LA QUE TE FALTABA
+                        "Precio": round(cp, 2),
+                        "Predicción": round(pf, 2),
                         "Dirección": "🚀 COMPRA" if pf > cp else "📉 VENTA",
                         "Potencial %": round(potencial, 2),
                         "Acuerdo %": round(ac_raw, 1)
@@ -210,58 +211,50 @@ with tab3:
         end_time = time.time()
         total_time = end_time - start_time
         status_text.success(f"⚡ Escaneo de {len(tickers)} activos completado en {total_time:.1f}s")
-        
-# --- Lógica de Visualización Avanzada V6 ---
-        # --- Lógica de Visualización Avanzada V6 (CORREGIDA) ---
+
+
+        # --- Bloque de Visualización y Descarga (Fuera del bucle) ---
         if resultados_escaneo:
             df_res = pd.DataFrame(resultados_escaneo)
             
+            # Ordenar dinámicamente
             sort_col = "Acuerdo %" if sort_by == "Acuerdo %" else "Potencial %"
             df_res = df_res.sort_values(by=sort_col, ascending=False)
             
-            # Función de Estilos Robusta usando nombres de columnas
+            # Estilos robustos
             def style_v6(row):
-                # Creamos una lista de estilos vacíos del mismo largo que la fila
                 styles = [''] * len(row)
+                cols = list(row.index)
                 
-                # Convertimos la fila a un diccionario para buscar por nombre fácilmente
-                row_dict = row.to_dict()
-                columns = list(row.index)
-
-                # 1. Color por Dirección
-                if "Dirección" in columns:
-                    idx = columns.index("Dirección")
-                    if row_dict["Dirección"] == "🚀 COMPRA":
-                        styles[idx] = 'color: #00ff00; font-weight: bold;'
-                    else:
-                        styles[idx] = 'color: #ff4b4b; font-weight: bold;'
+                if "Dirección" in cols:
+                    idx = cols.index("Dirección")
+                    styles[idx] = 'color: #00ff00; font-weight: bold;' if "COMPRA" in row["Dirección"] else 'color: #ff4b4b; font-weight: bold;'
                 
-                # 2. Resaltar Acuerdo Alto
-                if "Acuerdo %" in columns:
-                    idx = columns.index("Acuerdo %")
-                    if row_dict["Acuerdo %"] > 55:
-                        styles[idx] = 'background-color: #1e3d24; color: #ffffff;'
+                if "Acuerdo %" in cols:
+                    idx = cols.index("Acuerdo %")
+                    if row["Acuerdo %"] > 55: styles[idx] = 'background-color: #1e3d24; color: #ffffff;'
                 
-                # 3. Resaltar Potencial Atractivo
-                if "Potencial %" in columns:
-                    idx = columns.index("Potencial %")
-                    # Marcamos en Cyan si el potencial es relevante según la dirección
-                    if (row_dict.get("Dirección") == "🚀 COMPRA" and row_dict["Potencial %"] > 2.0) or \
-                       (row_dict.get("Dirección") == "📉 VENTA" and row_dict["Potencial %"] < -2.0):
-                        styles[idx] = 'color: #00d4ff; font-weight: bold;'
+                if "Potencial %" in cols:
+                    idx = cols.index("Potencial %")
+                    if abs(row["Potencial %"]) > 2.0: styles[idx] = 'color: #00d4ff; font-weight: bold;'
                 
                 return styles
 
-            st.subheader("📊 Ranking de Oportunidades Filtradas")
+            st.subheader(f"📊 Ranking de Oportunidades ({tf_main})")
             
-            # Mostramos el DataFrame con el nuevo estilo dinámico
+            # Renderizar la tabla
             st.dataframe(
                 df_res.style.apply(style_v6, axis=1),
-                use_container_width=True,
-                column_config={
-                    "Potencial %": st.column_config.NumberColumn(format="%.2f%%"),
-                    "Acuerdo %": st.column_config.NumberColumn(format="%.1f%%"),
-                    "Precio": st.column_config.NumberColumn(format="$%.2f"),
-                    "Predicción": st.column_config.NumberColumn(format="$%.2f")
-                }
+                use_container_width=True
             )
+            
+            # --- BOTÓN DE DESCARGA (Restaurado) ---
+            csv = df_res.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Descargar Reporte Maestro (CSV)",
+                data=csv,
+                file_name=f"escaneo_{tf_main}_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+            )
+
+ 
