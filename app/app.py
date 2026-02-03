@@ -152,18 +152,34 @@ with tab2:
             st.download_button("📥 Descargar Reporte Backtesting", df_bt_results.to_csv(index=False), f"backtest_{ticker_main}.csv", "text/csv")
 
 # --- TAB 3: ESCANEO MAESTRO ---
+# --- TAB 3: ESCANEO MAESTRO (Versión Inteligente V6) ---
 with tab3:
-    st.subheader("🚀 Escaneo Multiactivo")
-    lista_raw = st.text_area("Tickers (ej: AAPL, NVDA, BTC-USD):", value="AAPL, NVDA, BTC-USD, GC=F, NQ=F, EURUSD=X", height=100)
+    st.subheader("🚀 Escaneo Multiactivo de Alto Rendimiento")
     
-    if st.button("🔍 Iniciar Escaneo"):
+    # Área de entrada de Tickers
+    lista_raw = st.text_area("Lista de Tickers (Copia y pega desde Excel o texto):", 
+                             value="AAPL, NVDA, MSFT, TSLA, BTC-USD, ETH-USD, NQ=F, ES=F, GC=F, CL=F, EURUSD=X", 
+                             height=120)
+    
+    col_f1, col_f2 = st.columns(2)
+    umbral_min = col_f1.slider("Filtrar por Acuerdo mínimo (%):", 0, 100, 30)
+    sort_by = col_f2.selectbox("Ordenar resultados por:", ["Acuerdo %", "Potencial %"])
+    
+    if st.button("🔍 Iniciar Escaneo Maestro"):
+        import time
+        start_time = time.time()
+        
         tickers = [t.strip().replace(",", "").upper() for t in lista_raw.replace("\n", " ").split() if t.strip()]
         resultados_escaneo = []
         progreso = st.progress(0)
+        status_text = st.empty()
         
         for idx, t in enumerate(tickers):
+            status_text.text(f"⏳ Analizando {idx+1}/{len(tickers)}: {t}")
             df_t = get_data(t, tf_main)
+            
             if not df_t.empty and len(df_t) >= 65:
+                # 🧠 Inferencia del Comité
                 sc = RobustScaler()
                 feats = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI', 'ADX']
                 scaled_t = sc.fit_transform(df_t[feats].values)
@@ -174,21 +190,52 @@ with tab3:
                 vol = df_t['Close'].pct_change().std()
                 zs = (np.mean(preds) - np.mean(scaled_t[:, 3])) / (np.std(scaled_t[:, 3]) + 1e-9)
                 pf = cp * (1 + (zs * vol * fuerza_global))
-                ac = max(0, 100 - (np.std(preds) * 1000))
                 
-                resultados_escaneo.append({
-                    "Fecha Consulta": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "Activo": t,
-                    "Temporalidad": tf_main,
-                    "Precio Cierre": round(cp, 4),
-                    "Predicción": round(pf, 4),
-                    "Dirección": "🚀 COMPRA" if pf > cp else "📉 VENTA",
-                    "Acuerdo %": f"{ac:.1f}%"
-                })
+                # Cálculos Clave
+                ac_raw = max(0, 100 - (np.std(preds) * 1000))
+                potencial = ((pf - cp) / cp) * 100
+                
+                if ac_raw >= umbral_min:
+                    resultados_escaneo.append({
+                        "Fecha Consulta": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "Activo": t,
+                        "Precio Cierre": round(cp, 4),
+                        "Predicción": round(pf, 4),
+                        "Dirección": "🚀 COMPRA" if pf > cp else "📉 VENTA",
+                        "Potencial %": round(potencial, 2),
+                        "Acuerdo %": round(ac_raw, 1)
+                    })
             progreso.progress((idx + 1) / len(tickers))
         
+        end_time = time.time()
+        total_time = end_time - start_time
+        status_text.success(f"⚡ Escaneo de {len(tickers)} activos completado en {total_time:.1f}s")
+        
         if resultados_escaneo:
-            df_res = pd.DataFrame(resultados_escaneo).sort_values(by="Acuerdo %", ascending=False)
-            st.subheader("📊 Resultados del Escaneo")
-            st.dataframe(df_res, use_container_width=True)
-            st.download_button("📥 Descargar Escaneo Maestro", df_res.to_csv(index=False), f"escaneo_maestro_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
+            # Ordenar dinámicamente
+            df_res = pd.DataFrame(resultados_escaneo)
+            sort_col = "Acuerdo %" if sort_by == "Acuerdo %" else "Potencial %"
+            df_res = df_res.sort_values(by=sort_col, ascending=False)
+            
+            # Formato visual
+            def highlight_signals(val):
+                if isinstance(val, (int, float)):
+                    if val > 55: return 'background-color: #1b4d3e; color: white;' # Verde oscuro para alto acuerdo
+                return ''
+
+            st.subheader("📊 Ranking de Oportunidades")
+            
+            # Aplicamos estilo solo a la columna de Acuerdo
+            styled_df = df_res.style.applymap(highlight_signals, subset=['Acuerdo %'])
+            
+            st.dataframe(styled_df, use_container_width=True)
+            
+            # Preparar CSV con símbolos de porcentaje para que se vea bien en Excel
+            df_export = df_res.copy()
+            df_export['Potencial %'] = df_export['Potencial %'].apply(lambda x: f"{x}%")
+            df_export['Acuerdo %'] = df_export['Acuerdo %'].apply(lambda x: f"{x}%")
+            
+            st.download_button("📥 Descargar Reporte Maestro (CSV)", 
+                               df_export.to_csv(index=False), 
+                               f"maestro_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", 
+                               "text/csv")
