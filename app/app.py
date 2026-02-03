@@ -211,39 +211,50 @@ with tab3:
         total_time = end_time - start_time
         status_text.success(f"⚡ Escaneo de {len(tickers)} activos completado en {total_time:.1f}s")
         
-        # --- Lógica de Visualización Avanzada V6 ---
+# --- Lógica de Visualización Avanzada V6 ---
+        # --- Lógica de Visualización Avanzada V6 (CORREGIDA) ---
         if resultados_escaneo:
             df_res = pd.DataFrame(resultados_escaneo)
             
-            # Ordenar dinámicamente según tu elección en el UI
             sort_col = "Acuerdo %" if sort_by == "Acuerdo %" else "Potencial %"
             df_res = df_res.sort_values(by=sort_col, ascending=False)
             
-            # Función de Estilos (Semáforo Inteligente)
+            # Función de Estilos Robusta usando nombres de columnas
             def style_v6(row):
+                # Creamos una lista de estilos vacíos del mismo largo que la fila
                 styles = [''] * len(row)
                 
-                # 1. Color por Dirección (Columna 5)
-                if row['Dirección'] == "🚀 COMPRA":
-                    styles[5] = 'color: #00ff00; font-weight: bold;'
-                else:
-                    styles[5] = 'color: #ff4b4b; font-weight: bold;'
+                # Convertimos la fila a un diccionario para buscar por nombre fácilmente
+                row_dict = row.to_dict()
+                columns = list(row.index)
+
+                # 1. Color por Dirección
+                if "Dirección" in columns:
+                    idx = columns.index("Dirección")
+                    if row_dict["Dirección"] == "🚀 COMPRA":
+                        styles[idx] = 'color: #00ff00; font-weight: bold;'
+                    else:
+                        styles[idx] = 'color: #ff4b4b; font-weight: bold;'
                 
-                # 2. Resaltar Acuerdo Alto (Columna 7)
-                if row['Acuerdo %'] > 55:
-                    styles[7] = 'background-color: #1e3d24; color: #ffffff; border-radius: 5px;'
+                # 2. Resaltar Acuerdo Alto
+                if "Acuerdo %" in columns:
+                    idx = columns.index("Acuerdo %")
+                    if row_dict["Acuerdo %"] > 55:
+                        styles[idx] = 'background-color: #1e3d24; color: #ffffff;'
                 
-                # 3. Resaltar Potencial Atractivo (Columna 6)
-                # Si es compra y potencial > 2% o es venta y potencial < -2%
-                if (row['Dirección'] == "🚀 COMPRA" and row['Potencial %'] > 2.0) or \
-                   (row['Dirección'] == "📉 VENTA" and row['Potencial %'] < -2.0):
-                    styles[6] = 'color: #00d4ff; font-weight: bold;'
+                # 3. Resaltar Potencial Atractivo
+                if "Potencial %" in columns:
+                    idx = columns.index("Potencial %")
+                    # Marcamos en Cyan si el potencial es relevante según la dirección
+                    if (row_dict.get("Dirección") == "🚀 COMPRA" and row_dict["Potencial %"] > 2.0) or \
+                       (row_dict.get("Dirección") == "📉 VENTA" and row_dict["Potencial %"] < -2.0):
+                        styles[idx] = 'color: #00d4ff; font-weight: bold;'
                 
                 return styles
 
             st.subheader("📊 Ranking de Oportunidades Filtradas")
             
-            # Aplicar el estilo y mostrar
+            # Mostramos el DataFrame con el nuevo estilo dinámico
             st.dataframe(
                 df_res.style.apply(style_v6, axis=1),
                 use_container_width=True,
@@ -253,12 +264,4 @@ with tab3:
                     "Precio": st.column_config.NumberColumn(format="$%.2f"),
                     "Predicción": st.column_config.NumberColumn(format="$%.2f")
                 }
-            )
-            
-            # Preparar descarga limpia
-            st.download_button(
-                "📥 Descargar Reporte Maestro (CSV)", 
-                df_res.to_csv(index=False), 
-                f"maestro_{tf_main}_{datetime.now().strftime('%Y%m%d')}.csv", 
-                "text/csv"
             )
