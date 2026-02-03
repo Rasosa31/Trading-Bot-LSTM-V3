@@ -94,3 +94,4 @@ else:
         print(f"✅ {name} guardado con éxito en models_v6/")
 
     print("\n✨ ¡Comité V6 GLOBAL completado y optimizado!")
+    

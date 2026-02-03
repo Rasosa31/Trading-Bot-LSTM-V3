@@ -73,6 +73,7 @@ if not os.path.exists('models'): os.makedirs('models')
 
 model_names = ["m1_puro", "m2_volatilidad", "m3_tendencia", "m4_memoria", "m5_agresivo"]
 
+
 for name in model_names:
     print(f"\n--- Entrenando Motor: {name} ---")
     model = create_model(name)
