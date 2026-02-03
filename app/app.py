@@ -200,8 +200,8 @@ with tab3:
                         "Fecha": datetime.now().strftime("%H:%M"),
                         "Activo": t,
                         "TF": tf_main, # <--- ESTA ES LA QUE TE FALTABA
-                        "Precio": round(cp, 2),
-                        "Predicción": round(pf, 2),
+                        "Precio": round(cp, 4),
+                        "Predicción": round(pf, 4),
                         "Dirección": "🚀 COMPRA" if pf > cp else "📉 VENTA",
                         "Potencial %": round(potencial, 2),
                         "Acuerdo %": round(ac_raw, 1)
