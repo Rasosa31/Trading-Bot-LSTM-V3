@@ -211,31 +211,54 @@ with tab3:
         total_time = end_time - start_time
         status_text.success(f"⚡ Escaneo de {len(tickers)} activos completado en {total_time:.1f}s")
         
+        # --- Lógica de Visualización Avanzada V6 ---
         if resultados_escaneo:
-            # Ordenar dinámicamente
             df_res = pd.DataFrame(resultados_escaneo)
+            
+            # Ordenar dinámicamente según tu elección en el UI
             sort_col = "Acuerdo %" if sort_by == "Acuerdo %" else "Potencial %"
             df_res = df_res.sort_values(by=sort_col, ascending=False)
             
-            # Formato visual
-            def highlight_signals(val):
-                if isinstance(val, (int, float)):
-                    if val > 55: return 'background-color: #1b4d3e; color: white;' # Verde oscuro para alto acuerdo
-                return ''
+            # Función de Estilos (Semáforo Inteligente)
+            def style_v6(row):
+                styles = [''] * len(row)
+                
+                # 1. Color por Dirección (Columna 5)
+                if row['Dirección'] == "🚀 COMPRA":
+                    styles[5] = 'color: #00ff00; font-weight: bold;'
+                else:
+                    styles[5] = 'color: #ff4b4b; font-weight: bold;'
+                
+                # 2. Resaltar Acuerdo Alto (Columna 7)
+                if row['Acuerdo %'] > 55:
+                    styles[7] = 'background-color: #1e3d24; color: #ffffff; border-radius: 5px;'
+                
+                # 3. Resaltar Potencial Atractivo (Columna 6)
+                # Si es compra y potencial > 2% o es venta y potencial < -2%
+                if (row['Dirección'] == "🚀 COMPRA" and row['Potencial %'] > 2.0) or \
+                   (row['Dirección'] == "📉 VENTA" and row['Potencial %'] < -2.0):
+                    styles[6] = 'color: #00d4ff; font-weight: bold;'
+                
+                return styles
 
-            st.subheader("📊 Ranking de Oportunidades")
+            st.subheader("📊 Ranking de Oportunidades Filtradas")
             
-            # Aplicamos estilo solo a la columna de Acuerdo
-            styled_df = df_res.style.applymap(highlight_signals, subset=['Acuerdo %'])
+            # Aplicar el estilo y mostrar
+            st.dataframe(
+                df_res.style.apply(style_v6, axis=1),
+                use_container_width=True,
+                column_config={
+                    "Potencial %": st.column_config.NumberColumn(format="%.2f%%"),
+                    "Acuerdo %": st.column_config.NumberColumn(format="%.1f%%"),
+                    "Precio": st.column_config.NumberColumn(format="$%.2f"),
+                    "Predicción": st.column_config.NumberColumn(format="$%.2f")
+                }
+            )
             
-            st.dataframe(styled_df, use_container_width=True)
-            
-            # Preparar CSV con símbolos de porcentaje para que se vea bien en Excel
-            df_export = df_res.copy()
-            df_export['Potencial %'] = df_export['Potencial %'].apply(lambda x: f"{x}%")
-            df_export['Acuerdo %'] = df_export['Acuerdo %'].apply(lambda x: f"{x}%")
-            
-            st.download_button("📥 Descargar Reporte Maestro (CSV)", 
-                               df_export.to_csv(index=False), 
-                               f"maestro_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", 
-                               "text/csv")
+            # Preparar descarga limpia
+            st.download_button(
+                "📥 Descargar Reporte Maestro (CSV)", 
+                df_res.to_csv(index=False), 
+                f"maestro_{tf_main}_{datetime.now().strftime('%Y%m%d')}.csv", 
+                "text/csv"
+            )
