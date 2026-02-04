@@ -61,7 +61,7 @@ def get_data(ticker, timeframe):
 
 # 5. INTERFAZ
 st.set_page_config(page_title="StockAI V6 Ultra Pro", layout="wide")
-st.title("🤖 StockAI Committee V6 - Intelligence Terminal")
+st.title("🤖 Stock-AI Predictor V6 - M.L. LSTM Model")
 
 tab1, tab2, tab3 = st.tabs(["📈 Análisis Individual", "🧪 Backtesting Pro", "🚀 Escaneo Maestro"])
 
@@ -122,15 +122,24 @@ with tab2:
     if not df.empty:
         test_days = st.number_input("Velas de prueba:", 5, 200, 30)
         if st.button("📊 Correr Backtest"):
+            # 1. Inicializar barra de progreso y estado
+            progreso_bt = st.progress(0)
+            status_bt = st.empty()
+            
             scaler = RobustScaler()
             features = ['Open', 'High', 'Low', 'Close', 'Volume', 'SMA_100', 'SMA_200', 'RSI', 'ADX']
             scaled = scaler.fit_transform(df[features].values)
             
             hits, bt_log = [], []
-            df_precios = df['Close'].iloc[-test_days:].values
-            df_precios_prev = df['Close'].iloc[-test_days-1:-1].values
             
-            for i in range(len(scaled) - test_days, len(scaled)):
+            # Definimos el rango para calcular el progreso
+            rango_indices = range(len(scaled) - test_days, len(scaled))
+            total_pasos = len(rango_indices)
+            
+            for idx, i in enumerate(rango_indices):
+                # 2. Actualizar visualización
+                status_bt.text(f"⏳ Procesando vela {idx + 1} de {total_pasos}...")
+                
                 window = scaled[i-60:i].reshape(1, 60, len(features))
                 preds = [m.predict(window, verbose=0)[0][0] for m in model_committee]
                 pred_dir = 1 if (np.mean(preds) > scaled[i-1, 3]) else -1
@@ -145,13 +154,18 @@ with tab2:
                     "Dirección Real": "ALZA" if real_dir == 1 else "BAJA",
                     "Resultado": "✅" if hit == 1 else "❌"
                 })
+                
+                # 3. Mover la barra
+                progreso_bt.progress((idx + 1) / total_pasos)
 
+            # Limpiar texto de estado y mostrar éxito
+            status_bt.empty()
             df_bt_results = pd.DataFrame(bt_log)
-            st.success(f"Backtest completado. Efectividad: {(sum(hits)/len(hits))*100:.1f}%")
+            st.success(f"✅ Backtest completado. Efectividad: {(sum(hits)/len(hits))*100:.1f}%")
+            
             st.dataframe(df_bt_results, use_container_width=True)
             st.download_button("📥 Descargar Reporte Backtesting", df_bt_results.to_csv(index=False), f"backtest_{ticker_main}.csv", "text/csv")
 
-# --- TAB 3: ESCANEO MAESTRO ---
 # --- TAB 3: ESCANEO MAESTRO (Versión Inteligente V6) ---
 with tab3:
     st.subheader("🚀 Escaneo Multiactivo de Alto Rendimiento")
@@ -257,4 +271,4 @@ with tab3:
                 mime="text/csv",
             )
 
- 
+           
